@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tienda de Productos Personalizados</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            background-color: #daf1f7;
+        }
+        header {
+            background-color: #59b0eb;
+            color: white;
+            padding: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header .logo {
+            margin-left: 20px;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        header nav {
+            margin-right: 20px;
+        }
+        header nav a {
+            color: white;
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 1em;
+        }
+        .hero {
+            background-image: url('fondo.jpg');
+            background-size: cover;
+            background-position: center;
+            height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: rgb(0, 0, 0);
+            text-align: center;
+            padding: 20px;
+        }
+        .hero h1 {
+            font-size: 2.5em;
+            margin: 0;
+        }
+        .catalogo {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            padding: 20px;
+        }
+        .catalogo-item {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 15px;
+            padding: 15px;
+            text-align: center;
+        }
+        .catalogo-item img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+        }
+        .catalogo-item h3 {
+            font-size: 1.2em;
+            margin: 10px 0;
+            color: #333;
+        }
+        .catalogo-item p {
+            color: #666;
+            margin: 5px 0;
+        }
+        footer {
+            background-color: #333;
+            color: white;
+            text-align: center;
+            padding: 10px 0;
+            position: static;
+            width: 100%;
+            bottom: 0;
+        }
+        footer a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo"><img src="logo.png" alt="logo Ludus"></div>
+        <nav>
+            <a href="#inicio">Inicio</a>
+            <a href="#disenadores">Diseñadores</a>
+            <a href="#disenos">Diseños</a>
+            <a href="#iniciar-sesion">Iniciar Sesión</a>
+            <a href="#registrarse">Registrarse</a>
+        </nav>
+    </header>
+
+    <div class="hero">
+        <h1>Bienvenido a nuestro sitio de Productos Personalizados</h1>
+        <h2>Solo debes elegir el diseño que más te guste</h2>
+        <h2>y nosotros lo estampamos en el producto que necesitás</h2>
+    </div>
+    <h2>Diseños destacados</h2>
+    <main class="catalogo">
+        <div class="catalogo-item">
+            <img src="diseno1.jpg" alt="Diseño 1">
+            <h3>Robotik</h3>
+            <p>Diseñador: Juan Pérez</p>
+            <p>Fecha: 01/04/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno2.jpg" alt="Diseño 2">
+            <h3>Samurai Warrior</h3>
+            <p>Diseñador: María López</p>
+            <p>Fecha: 15/06/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno3.jpg" alt="Diseño 3">
+            <h3>Floreados</h3>
+            <p>Diseñador: Ana Martínez</p>
+            <p>Fecha: 10/09/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno4.jpg" alt="Diseño 4">
+            <h3>Colección Invierno</h3>
+            <p>Diseñador: Pedro García</p>
+            <p>Fecha: 20/12/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno5.jpg" alt="Diseño 5">
+            <h3>Colección Exclusiva</h3>
+            <p>Diseñador: Laura Sánchez</p>
+            <p>Fecha: 05/03/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno6.jpg" alt="Diseño 6">
+            <h3>Colección Limitada</h3>
+            <p>Diseñador: Carlos Ruiz</p>
+            <p>Fecha: 28/02/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno7.jpg" alt="Diseño 7">
+            <h3>Colección Elegante</h3>
+            <p>Diseñador: Sofía Gómez</p>
+            <p>Fecha: 17/01/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno8.jpg" alt="Diseño 8">
+            <h3>Colección Casual</h3>
+            <p>Diseñador: Alejandro Torres</p>
+            <p>Fecha: 22/07/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno9.jpg" alt="Diseño 9">
+            <h3>Colección Formal</h3>
+            <p>Diseñador: Andrea Ramírez</p>
+            <p>Fecha: 30/05/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno10.jpg" alt="Diseño 10">
+            <h3>Colección Moderna</h3>
+            <p>Diseñador: Luis Fernández</p>
+            <p>Fecha: 12/11/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno11.jpg" alt="Diseño 11">
+            <h3>Colección Retro</h3>
+            <p>Diseñador: Marta Díaz</p>
+            <p>Fecha: 18/08/2023</p>
+        </div>
+        <div class="catalogo-item">
+            <img src="diseno12.jpg" alt="Diseño 12">
+            <h3>Colección Juvenil</h3>
+            <p>Diseñador: Fernando Ortiz</p>
+            <p>Fecha: 25/06/2023</p>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Mi Tienda. Todos los derechos reservados.</p>
+        <p><a href="#contacto">Contacto</a></p>
+    </footer>
+</body>
+</html>
