@@ -1,0 +1,39 @@
+<!-- public/register.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Registro</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="wrap auth">
+    <h1>Crear cuenta</h1>
+    <form id="form-register">
+      <label>Nombre<input name="name" required minlength="2" /></label>
+      <label>Email<input type="email" name="email" required /></label>
+      <label>Contraseña
+        <input type="password" name="password" required minlength="8" />
+        <small>Min 8, con mayúscula, minúscula y número</small>
+      </label>
+      <label>Preferencia de uso
+        <select name="usePreference">
+          <option value="buy">Comprar</option>
+          <option value="upload">Subir diseños</option>
+        </select>
+      </label>
+      <label>Rol
+        <select name="role">
+          <option value="buyer">Comprador</option>
+          <option value="designer">Diseñador</option>
+        </select>
+      </label>
+      <button class="btn" type="submit">Crear cuenta</button>
+      <p class="msg" id="msg-register"></p>
+    </form>
+    <p>¿Ya tenés cuenta? <a href="/login.html">Ingresá</a></p>
+  </main>
+  <script src="/js/auth.js"></script>
+</body>
+</html>

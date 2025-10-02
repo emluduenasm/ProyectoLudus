@@ -1,0 +1,12 @@
+/* public/styles.css */
+:root { --brand:#0d3e75; --ink:#222; --bg:#f8f8fb; --bd:#dcdcdc; }
+*{box-sizing:border-box} body{margin:0;font:16px/1.4 system-ui;background:var(--bg);color:var(--ink)}
+.wrap{max-width:960px;margin:auto;padding:16px}
+header.wrap{display:flex;justify-content:space-between;align-items:center}
+nav a{margin-left:12px;text-decoration:none;color:var(--brand)}
+.btn{background:var(--brand);color:#fff;padding:10px 16px;border-radius:8px;border:0;cursor:pointer;display:inline-block;text-decoration:none}
+.hero{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:24px}
+.auth form{display:grid;gap:12px;background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px}
+label{display:grid;gap:6px}
+input,select{padding:10px;border:1px solid var(--bd);border-radius:8px}
+.msg{min-height:1.4em}

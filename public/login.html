@@ -1,0 +1,23 @@
+<!-- public/login.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ingresar</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="wrap auth">
+    <h1>Ingresar</h1>
+    <form id="form-login">
+      <label>Email<input type="email" name="email" required /></label>
+      <label>Contraseña<input type="password" name="password" required /></label>
+      <button class="btn" type="submit">Entrar</button>
+      <p class="msg" id="msg-login"></p>
+    </form>
+    <p>¿No tenés cuenta? <a href="/register.html">Regístrate</a></p>
+  </main>
+  <script src="/js/auth.js"></script>
+</body>
+</html>
