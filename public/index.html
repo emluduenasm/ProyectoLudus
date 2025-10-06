@@ -1,31 +1,154 @@
-<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Home – Productos Personalizados</title>
+  <title>Ludus Stamps – Productos Personalizados</title>
+
+  <!-- Iconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+  <!-- Estilos -->
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <header class="wrap">
-    <h1>Productos Personalizados</h1>
-    <nav>
-      <a href="/login.html">Ingresar</a>
-      <a href="/register.html" class="btn">Crear cuenta</a>
-    </nav>
+  <!-- Header / Navbar -->
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/">
+        <img src="/img/logo.png" alt="Logo de Ludus Stamps" />
+        <div class="brand-text">
+          <strong>LUDUS</strong><span>stamps</span>
+        </div>
+      </a>
+
+      <button class="nav-toggle" id="navToggle" aria-label="Abrir menú">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+
+      <nav class="menu" id="menu">
+        <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
+        <a href="/disenadores.html"><i class="fa-solid fa-users"></i> Diseñadores</a>
+        <a href="/disenos.html"><i class="fa-solid fa-palette"></i> Diseños</a>
+        <a href="/login.html" class="link-muted"><i class="fa-solid fa-right-to-bracket"></i> Iniciar sesión</a>
+        <a href="/register.html" class="btn btn-primary"><i class="fa-solid fa-user-plus"></i> Registrarse</a>
+      </nav>
+    </div>
   </header>
 
-  <main class="wrap">
-    <section class="hero">
-      <h2>Diseños únicos, hechos para vos</h2>
-      <p>Explora y personaliza productos creados por diseñadores locales.</p>
-      <a class="btn" href="/register.html">Empieza ahora</a>
-    </section>
-  </main>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <h1>Bienvenido a nuestro sitio de <span class="accent">Productos Personalizados</span></h1>
+        <p>Elegí el diseño que más te guste y nosotros lo estampamos en el producto que necesitás.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="/register.html">Crear cuenta</a>
+          <a class="btn btn-outline" href="/disenos.html">Ver diseños</a>
+        </div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="dots"></div>
+      </div>
+    </div>
+  </section>
 
-  <footer class="wrap">
-    <small>© Emmanuel Ludueña – 2025</small>
+  <!-- Diseños destacados (dinámico) -->
+  <section class="section">
+    <div class="container">
+      <div class="section-head">
+        <h2>Diseños destacados</h2>
+        <a class="link" href="/disenos.html">Ver todos <i class="fa-solid fa-arrow-right"></i></a>
+      </div>
+
+      <div class="grid" id="featured-grid">
+        <!-- Se completa por JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Diseñadores destacados (estático de muestra, podés dinamizarlo luego) -->
+  <section class="section alt">
+    <div class="container">
+      <div class="section-head">
+        <h2>Diseñadores destacados</h2>
+        <a class="link" href="/disenadores.html">Ver todos <i class="fa-solid fa-arrow-right"></i></a>
+      </div>
+
+      <div class="grid">
+        <article class="card designer">
+          <div class="card-media circle">
+            <img src="/img/disenador1.jpg" alt="UMI design" loading="lazy" />
+          </div>
+          <div class="card-body">
+            <h3>UMI design</h3>
+            <p class="muted">10 diseños</p>
+          </div>
+        </article>
+
+        <article class="card designer">
+          <div class="card-media circle">
+            <img src="/img/disenador2.jpg" alt="Fafiña" loading="lazy" />
+          </div>
+          <div class="card-body">
+            <h3>Fafiña</h3>
+            <p class="muted">56 diseños</p>
+          </div>
+        </article>
+
+        <article class="card designer">
+          <div class="card-media circle">
+            <img src="/img/disenador3.jpg" alt="Gorilla Lifestyle" loading="lazy" />
+          </div>
+          <div class="card-body">
+            <h3>Gorilla Lifestyle</h3>
+            <p class="muted">13 diseños</p>
+          </div>
+        </article>
+
+        <article class="card designer">
+          <div class="card-media circle">
+            <img src="/img/disenador4.jpg" alt="Colección Invierno" loading="lazy" />
+          </div>
+          <div class="card-body">
+            <h3>Colección Invierno</h3>
+            <p class="muted">25 diseños</p>
+          </div>
+        </article>
+
+        <article class="card designer">
+          <div class="card-media circle">
+            <img src="/img/disenador5.jpg" alt="Colección Exclusiva" loading="lazy" />
+          </div>
+          <div class="card-body">
+            <h3>Colección Exclusiva</h3>
+            <p class="muted">34 diseños</p>
+          </div>
+        </article>
+
+        <article class="card designer">
+          <div class="card-media circle">
+            <img src="/img/disenador6.jpg" alt="Colección Limitada" loading="lazy" />
+          </div>
+          <div class="card-body">
+            <h3>Colección Limitada</h3>
+            <p class="muted">9 diseños</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p><a class="link" href="#contacto">Contacto</a></p>
+    </div>
   </footer>
+
+  <!-- Scripts -->
+  <script src="/js/home.js" defer></script>
+
 </body>
 </html>

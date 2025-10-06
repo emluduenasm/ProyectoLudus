@@ -5,12 +5,15 @@ import { fileURLToPath } from "url";
 import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
+import designsRoutes from "./routes/designsRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import "./db.js"; // inicializa conexión y crea tablas si no existen
+
 
 const app = express();
 
 app.use(helmet());
+app.use("/api/designs", designsRoutes);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
