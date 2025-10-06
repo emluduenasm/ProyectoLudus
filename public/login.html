@@ -1,23 +1,69 @@
-<!-- public/login.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ingresar</title>
+  <title>Iniciar sesión – Ludus Stamps</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <main class="wrap auth">
-    <h1>Ingresar</h1>
-    <form id="form-login">
-      <label>Email<input type="email" name="email" required /></label>
-      <label>Contraseña<input type="password" name="password" required /></label>
-      <button class="btn" type="submit">Entrar</button>
-      <p class="msg" id="msg-login"></p>
-    </form>
-    <p>¿No tenés cuenta? <a href="/register.html">Regístrate</a></p>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/">
+        <img src="/img/logo.png" alt="Logo de Ludus Stamps" />
+        <div class="brand-text"><strong>LUDUS</strong><span>stamps</span></div>
+      </a>
+
+      <button class="nav-toggle" id="navToggle" aria-label="Abrir menú">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+
+      <nav class="menu" id="menu">
+        <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
+        <a href="/disenadores.html"><i class="fa-solid fa-users"></i> Diseñadores</a>
+        <a href="/disenos.html"><i class="fa-solid fa-palette"></i> Diseños</a>
+        <a href="/register.html" class="btn btn-primary"><i class="fa-solid fa-user-plus"></i> Registrarse</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="container">
+      <div class="form-card">
+        <h1 class="form-title"><i class="fa-solid fa-right-to-bracket"></i> Iniciar sesión</h1>
+
+        <form id="form-login" class="form-grid">
+          <label>Email
+            <input type="email" name="email" required />
+          </label>
+          <label>Contraseña
+            <input type="password" name="password" required minlength="8" />
+          </label>
+
+          <button class="btn btn-primary" type="submit">Entrar</button>
+          <p class="msg" id="msg-login"></p>
+
+          <p class="muted center">¿No tenés cuenta? <a class="link" href="/register.html">Registrate</a></p>
+        </form>
+      </div>
+    </section>
   </main>
-  <script src="/js/auth.js"></script>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p><a class="link" href="#contacto">Contacto</a></p>
+    </div>
+  </footer>
+
+  <script>
+    const navToggle = document.getElementById('navToggle');
+    const menu = document.getElementById('menu');
+    navToggle?.addEventListener('click', () => menu.classList.toggle('open'));
+  </script>
+  <script src="/js/auth.js" defer></script>
 </body>
 </html>

@@ -64,6 +64,31 @@ const bootstrap = async () => {
   `);
 };
 
+// 1) Extensiones (ya las tenías)
+await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+
+// 2) Identidad legal
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS personas (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    first_name TEXT NOT NULL,
+    last_name  TEXT NOT NULL,
+    dni        VARCHAR(20) UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+`);
+
+// 3) Users (añadimos username y FK a persona)
+await pool.query(`
+  -- Aseguramos columnas nuevas sin romper datos previos
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS username   TEXT;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS persona_id UUID REFERENCES personas(id) ON DELETE SET NULL;
+
+  -- Unicidad case-insensitive para username (opcional pero recomendado)
+  CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username));
+`);
+
+
 bootstrap().catch(err => {
   console.error("Error bootstrap DB:", err);
 });

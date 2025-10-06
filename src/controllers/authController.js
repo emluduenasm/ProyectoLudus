@@ -11,31 +11,68 @@ const signToken = (user) =>
     { expiresIn: "7d" }
   );
 
+import { pool } from "../db.js"; // asegúrate de tenerlo importado
+
 export const register = async (req, res) => {
+  const client = await pool.connect();
   try {
     const data = registerSchema.parse(req.body);
-    const exists = await findUserByEmail(data.email);
-    if (exists) return res.status(409).json({ error: "El email ya está registrado." });
+
+    // Unicidad de email / username / dni
+    const dupe = await pool.query(
+      `SELECT
+         MAX(CASE WHEN LOWER(u.email) = LOWER($1) THEN 1 ELSE 0 END) AS email_taken,
+         MAX(CASE WHEN LOWER(u.username) = LOWER($2) THEN 1 ELSE 0 END) AS username_taken,
+         MAX(CASE WHEN p.dni = $3 THEN 1 ELSE 0 END) AS dni_taken
+       FROM users u
+       FULL JOIN personas p ON p.id = u.persona_id`,
+      [data.email, data.username, data.dni]
+    );
+    const flags = dupe.rows[0];
+    if (flags.email_taken)    return res.status(409).json({ error: "El email ya está registrado." });
+    if (flags.username_taken) return res.status(409).json({ error: "El alias ya está en uso." });
+    if (flags.dni_taken)      return res.status(409).json({ error: "El DNI ya está registrado." });
 
     const passwordHash = await bcrypt.hash(data.password, 12);
-    const user = await createUser({
-      name: data.name.trim(),
-      email: data.email.toLowerCase(),
-      passwordHash,
-      role: data.role || "buyer",
-      usePreference: data.usePreference || "buy"
-    });
 
-    const token = signToken(user);
-    res.status(201).json({ user, token });
+    await client.query("BEGIN");
+
+    const persona = await client.query(
+      `INSERT INTO personas (first_name, last_name, dni)
+       VALUES ($1,$2,$3)
+       RETURNING id, first_name, last_name, dni`,
+      [data.first_name.trim(), data.last_name.trim(), data.dni.trim()]
+    );
+
+    const user = await client.query(
+      `INSERT INTO users (name, email, username, password_hash, role, use_preference, persona_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id, name, email, username, role, use_preference, persona_id, created_at`,
+      [
+        `${data.first_name.trim()} ${data.last_name.trim()}`,
+        data.email.toLowerCase(),
+        data.username,
+        passwordHash,
+        data.role || "buyer",
+        data.usePreference || "buy",
+        persona.rows[0].id
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    const token = signToken(user.rows[0]);
+    res.status(201).json({ user: user.rows[0], token, persona: persona.rows[0] });
   } catch (err) {
-    if (err?.issues) {
-      return res.status(400).json({ error: "Datos inválidos", details: err.issues });
-    }
+    await client.query("ROLLBACK");
+    if (err?.issues) return res.status(400).json({ error: "Datos inválidos", details: err.issues });
     console.error(err);
     res.status(500).json({ error: "Error de servidor" });
+  } finally {
+    client.release();
   }
 };
+
 
 export const login = async (req, res) => {
   try {
