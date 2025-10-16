@@ -5,32 +5,32 @@ import { pool } from "../db.js";
 const router = Router();
 
 /**
- * GET /api/designers/featured?limit=6
- * Devuelve los diseñadores ordenados por total de likes de sus diseños (desc),
- * con cantidad de diseños publicados y datos de avatar/nombre.
+ * Diseñadores destacados por suma de likes de sus diseños publicados.
+ * Devuelve: id, name (display_name/username/name), avatar_url, likes
  */
-router.get("/featured", async (req, res) => {
+router.get("/featured", async (_req, res) => {
   try {
-    const limit = Math.max(1, Math.min(parseInt(req.query.limit || "6", 10), 24));
-    const { rows } = await pool.query(`
-      SELECT
-        g.id AS designer_id,
-        COALESCE(g.display_name, 'Anónimo') AS display_name,
-        COALESCE(g.avatar_url, '/img/disenador1.jpg') AS avatar_url,
-        COALESCE(COUNT(DISTINCT d.id), 0)::int AS designs_count,
-        COALESCE(COUNT(l.user_id), 0)::int AS total_likes
-      FROM designers g
-      JOIN users u ON u.id = g.user_id
-      LEFT JOIN designs d ON d.designer_id = g.id AND d.published = true
-      LEFT JOIN design_likes l ON l.design_id = d.id
-      GROUP BY g.id
-      ORDER BY total_likes DESC, designs_count DESC, display_name ASC
-      LIMIT $1;
-    `, [limit]);
-
+    const { rows } = await pool.query(
+      `SELECT g.id,
+              COALESCE(NULLIF(TRIM(g.display_name), ''), u.username, u.name, 'Anónimo') AS name,
+              COALESCE(NULLIF(TRIM(g.avatar_url), ''), '/img/disenador1.jpg')           AS avatar_url,
+              COALESCE(SUM(lc.cnt), 0)::int                                            AS likes
+       FROM designers g
+       JOIN users u ON u.id = g.user_id
+       LEFT JOIN (
+         SELECT d.designer_id, COUNT(l.user_id) AS cnt
+         FROM designs d
+         LEFT JOIN design_likes l ON l.design_id = d.id
+         WHERE d.published = TRUE
+         GROUP BY d.designer_id, d.id
+       ) lc ON lc.designer_id = g.id
+       GROUP BY g.id, u.username, u.name
+       ORDER BY likes DESC, name ASC
+       LIMIT 12`
+    );
     res.json(rows);
   } catch (e) {
-    console.error(e);
+    console.error("GET /designers/featured", e);
     res.status(500).json({ error: "No se pudieron cargar los diseñadores destacados" });
   }
 });

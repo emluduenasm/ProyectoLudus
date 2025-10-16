@@ -34,19 +34,22 @@
       <div class="form-card">
         <h1 class="form-title"><i class="fa-solid fa-user-plus"></i> Crear cuenta</h1>
 
-        <form id="form-register" class="form-grid">
+        <form id="form-register" class="form-grid" novalidate>
           <div class="grid-2">
             <label>Nombres
-              <input name="first_name" required minlength="2" pattern="[\p{L}ÁÉÍÓÚáéíóúÑñÜü' -]{2,80}" />
+              <input name="first_name" required minlength="2"
+                     pattern="[\p{L}ÁÉÍÓÚáéíóúÑñÜü' -]{2,80}" />
             </label>
             <label>Apellidos
-              <input name="last_name" required minlength="2" pattern="[\p{L}ÁÉÍÓÚáéíóúÑñÜü' -]{2,80}" />
+              <input name="last_name" required minlength="2"
+                     pattern="[\p{L}ÁÉÍÓÚáéíóúÑñÜü' -]{2,80}" />
             </label>
+          </div>
 
+          <div class="grid-2">
             <label>DNI
               <input name="dni" required inputmode="numeric" maxlength="8" pattern="\d{8}" />
             </label>
-
             <label>Alias / Nombre de usuario
               <input name="username" required minlength="3" pattern="[a-zA-Z0-9._-]+" />
               <small>Usa letras, números, punto, guión o guión bajo</small>
@@ -64,15 +67,9 @@
 
           <div class="grid-2">
             <label>Preferencia de uso
-              <select name="usePreference">
+              <select name="usePreference" required>
                 <option value="buy">Comprar</option>
                 <option value="upload">Subir diseños</option>
-              </select>
-            </label>
-            <label>Rol
-              <select name="role">
-                <option value="buyer">Comprador</option>
-                <option value="designer">Diseñador</option>
               </select>
             </label>
           </div>
@@ -100,5 +97,6 @@
     navToggle?.addEventListener('click', () => menu.classList.toggle('open'));
   </script>
   <script src="/js/auth.js" defer></script>
+  <script src="/js/auth-ui.js" defer></script>
 </body>
 </html>

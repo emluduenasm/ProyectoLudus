@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin · Diseños</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="/styles.css"/>
+  <style>
+    .admin-wrap{max-width:1100px;margin:2rem auto;padding:1rem}
+    .toolbar{display:flex;gap:.5rem;align-items:center;margin-bottom:1rem}
+    .toolbar input{flex:1}
+    table{width:100%;border-collapse:separate;border-spacing:0 .5rem}
+    td,th{padding:.6rem .8rem;background:#fff}
+    th{color:#334155;text-align:left}
+    td:first-child,th:first-child{border-top-left-radius:10px;border-bottom-left-radius:10px}
+    td:last-child,th:last-child{border-top-right-radius:10px;border-bottom-right-radius:10px}
+    .pill{padding:.2rem .6rem;border-radius:999px;background:#e2e8f0;color:#1e293b;font-size:.8rem}
+    .actions{display:flex;gap:.5rem;flex-wrap:wrap}
+    .muted-sm{color:#64748b;font-size:.85rem}
+    .pagination{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem}
+    .pagination button{min-width:2.25rem}
+    .thumb{width:56px;height:56px;border-radius:8px;object-fit:cover;background:#f1f5f9}
+    .btn-danger{background:#dc2626;color:#fff}
+    .btn-danger:hover{filter:brightness(.95)}
+    .switch{appearance:none;width:42px;height:24px;background:#e2e8f0;border-radius:999px;position:relative;outline:none;cursor:pointer;vertical-align:middle}
+    .switch:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s ease}
+    .switch:checked{background:#2563eb}
+    .switch:checked:after{transform:translateX(18px)}
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/"><img src="/img/logo.png" alt="Logo"/><div class="brand-text"><strong>LUDUS</strong><span>stamps</span></div></a>
+      <nav class="menu">
+        <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
+        <a href="/upload.html"><i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="admin-wrap">
+    <h1>Panel admin · Diseños</h1>
+
+    <div class="toolbar">
+      <input id="q" type="search" class="input" placeholder="Buscar por título o diseñador…"/>
+      <button id="btnSearch" class="btn"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
+      <span id="resultInfo" class="muted-sm"></span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Imagen</th>
+            <th>Título</th>
+            <th>Diseñador</th>
+            <th>Likes</th>
+            <th>Publicado</th>
+            <th class="right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="pagination">
+      <button id="prev" class="btn">←</button>
+      <span id="pageInfo" class="muted-sm"></span>
+      <button id="next" class="btn">→</button>
+    </div>
+
+    <!-- Modal: Editar -->
+    <dialog id="modal">
+      <form id="formEdit" method="dialog" class="card" style="padding:1rem;min-width:min(520px,95vw)">
+        <h3>Editar diseño</h3>
+        <input type="hidden" name="id"/>
+        <label>Título
+          <input class="input" name="title" required minlength="3"/>
+        </label>
+        <label>Descripción
+          <textarea class="input" name="description" rows="4" placeholder="Opcional"></textarea>
+        </label>
+        <label style="display:flex;gap:.5rem;align-items:center">
+          <input type="checkbox" name="published" class="switch"/> <span>Publicado</span>
+        </label>
+        <div id="msg" class="muted-sm" style="margin-top:.5rem"></div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+          <button type="button" id="btnClose" class="btn">Cancelar</button>
+          <button class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p><a class="link" href="#contacto">Contacto</a></p>
+    </div>
+  </footer>
+
+  <script src="/js/auth-ui.js" defer></script>
+  <script src="/js/admin-designs.js" defer></script>
+</body>
+</html>

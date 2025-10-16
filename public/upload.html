@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Subir diseño – Ludus Stamps</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    /* ajustes mínimos para la vista previa */
+    #preview{display:none; max-width:420px; border-radius:16px; overflow:hidden; background:#f2f4f7; border:1px solid var(--bd); }
+    #preview img{display:block; width:100%; height:auto; object-fit:contain; background:#fff;}
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/">
+        <img src="/img/logo.png" alt="Logo de Ludus Stamps" />
+        <div class="brand-text"><strong>LUDUS</strong><span>stamps</span></div>
+      </a>
+
+      <button class="nav-toggle" id="navToggle" aria-label="Abrir menú">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+
+      <nav class="menu" id="menu">
+        <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
+        <a href="/disenadores.html"><i class="fa-solid fa-users"></i> Diseñadores</a>
+        <a href="/disenos.html"><i class="fa-solid fa-palette"></i> Diseños</a>
+        <a href="/upload.html" class="btn btn-primary"><i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="container">
+      <div class="form-card">
+        <h1 class="form-title"><i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño</h1>
+
+        <p class="muted">Formatos permitidos: JPG, PNG o WEBP. Tamaño máximo: 8 MB.</p>
+
+        <form id="form-upload" class="form-grid" enctype="multipart/form-data" novalidate>
+          <label>Título del diseño
+            <input name="title" required minlength="3" maxlength="120" />
+          </label>
+
+          <label>Descripción (opcional)
+            <textarea name="description" rows="3" maxlength="400" placeholder="Contanos de qué se trata…"></textarea>
+          </label>
+
+          <label>Imagen
+            <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required />
+          </label>
+
+          <div id="preview" class="card-media">
+            <img id="preview-img" alt="Vista previa" />
+          </div>
+
+          <!-- checkbox eliminado; se publica automáticamente -->
+          <button class="btn btn-primary" type="submit">Guardar</button>
+          <p class="msg" id="msg-upload"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="container">
+      <div class="section-head">
+        <h2>Mis diseños</h2>
+      </div>
+
+      <div class="grid" id="my-designs"><!-- JS --></div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p><a class="link" href="#contacto">Contacto</a></p>
+    </div>
+  </footer>
+
+  <script>
+    const navToggle = document.getElementById('navToggle');
+    const menu = document.getElementById('menu');
+    navToggle?.addEventListener('click', () => menu.classList.toggle('open'));
+  </script>
+  <script src="/js/upload.js" defer></script>
+  <script src="/js/auth-ui.js" defer></script>
+</body>
+</html>

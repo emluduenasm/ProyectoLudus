@@ -1,10 +1,19 @@
 // /public/js/auth.js
+// Maneja registro y login con validación en vivo y redirecciones.
+// Endpoints esperados:
+//  - POST /api/auth/register
+//  - POST /api/auth/login
+//  - GET  /api/auth/me
+
 const api = (path) => `/api/auth${path}`;
 
-/* Utilidades DOM */
+/* ==========================
+   Utilidades DOM / helpers
+========================== */
 const byName = (form, name) => form.querySelector(`[name="${name}"]`);
+
 const ensureMsg = (input) => {
-  // busca un .input-msg después del input o lo crea
+  // crea (o reutiliza) un <small class="input-msg"> debajo del input
   let el = input.parentElement.querySelector(".input-msg");
   if (!el) {
     el = document.createElement("small");
@@ -13,6 +22,7 @@ const ensureMsg = (input) => {
   }
   return el;
 };
+
 const setError = (input, msg) => {
   const el = ensureMsg(input);
   el.textContent = msg || "";
@@ -26,6 +36,7 @@ const setError = (input, msg) => {
     input.classList.remove("is-invalid");
   }
 };
+
 const setOK = (input, msg) => {
   const el = ensureMsg(input);
   el.textContent = msg || "";
@@ -35,17 +46,23 @@ const setOK = (input, msg) => {
   input.classList.remove("is-invalid");
 };
 
-/* Reglas */
+/* ==========================
+   Reglas de validación
+========================== */
 const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 const isUsername = (v) => /^[a-zA-Z0-9._-]{3,30}$/.test(v);
-const isDNI = (v) => /^\d{8}$/.test(v);
-const hasUpper = (s) => /[A-Z]/.test(s);
-const hasLower = (s) => /[a-z]/.test(s);
-const hasDigit = (s) => /\d/.test(s);
+
+// Nombres/apellidos: letras (incluye acentos/ñ/ü), espacios, apóstrofe y guion
 const nameRegex = /^[\p{L}ÁÉÍÓÚáéíóúÑñÜü' -]{2,80}$/u;
 const isName = (v) => nameRegex.test(v.trim());
 
-/* Fuerza contraseña: 2/3/4 */
+// DNI exactamente 8 dígitos
+const isDNI = (v) => /^\d{8}$/.test(v);
+
+/* Fuerza de contraseña */
+const hasUpper = (s) => /[A-Z]/.test(s);
+const hasLower = (s) => /[a-z]/.test(s);
+const hasDigit = (s) => /\d/.test(s);
 const passwordScore = (p) => {
   let s = 0;
   if (p.length >= 8) s++;
@@ -55,7 +72,9 @@ const passwordScore = (p) => {
   return Math.min(4, Math.max(0, s));
 };
 
-/* --- Registro --- */
+/* ==========================
+   Registro
+========================== */
 const formRegister = document.getElementById("form-register");
 if (formRegister) {
   const firstName = byName(formRegister, "first_name");
@@ -64,11 +83,10 @@ if (formRegister) {
   const username  = byName(formRegister, "username");
   const email     = byName(formRegister, "email");
   const password  = byName(formRegister, "password");
-  const role      = byName(formRegister, "role");
   const usePref   = byName(formRegister, "usePreference");
   const msgGlobal = document.getElementById("msg-register");
 
-  // medidor de contraseña
+  // Medidor visual de contraseña
   const meter = document.createElement("div");
   meter.className = "pw-meter";
   meter.innerHTML = "<i></i>";
@@ -76,28 +94,27 @@ if (formRegister) {
 
   const v = {
     firstName(){ 
-    const val = firstName.value.trim();
-    if (!isName(val)) return setError(firstName, "Solo letras/espacios (2–80)");
-    setOK(firstName);
-    return true;
-  },
-  lastName(){
-    const val = lastName.value.trim();
-    if (!isName(val)) return setError(lastName, "Solo letras/espacios (2–80)");
-    setOK(lastName);
-    return true;
-  },
-  dni(){
-    // fuerza a dígitos y recorta a 8 mientras escribe
-    dni.value = dni.value.replace(/\D/g, "").slice(0, 8);
-    const val = dni.value;
-    if (!isDNI(val)) return setError(dni, "DNI debe tener exactamente 8 dígitos");
-    setOK(dni);
-    return true;
-  },
+      const val = firstName.value.trim();
+      if (!isName(val)) return setError(firstName, "Solo letras/espacios (2–80)");
+      setOK(firstName);
+      return true;
+    },
+    lastName(){
+      const val = lastName.value.trim();
+      if (!isName(val)) return setError(lastName, "Solo letras/espacios (2–80)");
+      setOK(lastName);
+      return true;
+    },
+    dni(){
+      dni.value = dni.value.replace(/\D/g, "").slice(0, 8); // fuerza dígitos, máx 8
+      const val = dni.value;
+      if (!isDNI(val)) return setError(dni, "DNI debe tener exactamente 8 dígitos");
+      setOK(dni);
+      return true;
+    },
     username(){
       const v = username.value.trim();
-      if (!isUsername(v)) return setError(username, "Alias inválido (3-30: letras, números, ._-)");
+      if (!isUsername(v)) return setError(username, "Alias inválido (3–30: letras, números, . _ -)");
       setOK(username);
       return true;
     },
@@ -118,17 +135,21 @@ if (formRegister) {
       setOK(password, score >= 3 ? "Fuerte" : "Aceptable");
       return true;
     },
-    role(){ setOK(role); return true; },
-    usePref(){ setOK(usePref); return true; }
+    usePref(){
+      if (!usePref.value) return setError(usePref, "Seleccioná una opción");
+      setOK(usePref);
+      return true;
+    }
   };
 
-  // listeners en vivo
+  // Validación en vivo
   firstName.addEventListener("input", v.firstName);
   lastName.addEventListener("input", v.lastName);
   dni.addEventListener("input", v.dni);
   username.addEventListener("input", v.username);
   email.addEventListener("input", v.email);
   password.addEventListener("input", v.password);
+  usePref.addEventListener("change", v.usePref);
 
   formRegister.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -136,16 +157,16 @@ if (formRegister) {
 
     const allOK = [
       v.firstName(), v.lastName(), v.dni(),
-      v.username(), v.email(), v.password(), v.role(), v.usePref()
+      v.username(), v.email(), v.password(), v.usePref()
     ].every(Boolean);
 
     if (!allOK) {
-      msgGlobal.textContent = "Revisa los campos marcados en rojo.";
+      msgGlobal.textContent = "Revisá los campos marcados en rojo.";
       return;
     }
 
     const f = new FormData(formRegister);
-    const payload = Object.fromEntries(f.entries());
+    const payload = Object.fromEntries(f.entries()); // incluye usePreference
 
     try {
       const res = await fetch(api("/register"), {
@@ -155,13 +176,16 @@ if (formRegister) {
       });
       const data = await res.json();
       if (!res.ok) throw data;
+
       localStorage.setItem("token", data.token);
       msgGlobal.textContent = "¡Cuenta creada! Redirigiendo…";
-      setTimeout(() => (window.location.href = "/"), 700);
+      // Redirige según preferencia (server mapea a role)
+      const next = (payload.usePreference === "upload") ? "/upload.html" : "/";
+      setTimeout(() => (window.location.href = next), 700);
     } catch (err) {
       msgGlobal.textContent = err?.error || "Error al registrar";
       if (err?.details) {
-        // marca campos con errores de zod si vinieran
+        // Marca campos con errores devueltos por el backend (Zod)
         err.details.forEach((d) => {
           const path = Array.isArray(d.path) ? d.path[0] : d.path;
           const input = byName(formRegister, path);
@@ -172,7 +196,9 @@ if (formRegister) {
   });
 }
 
-/* --- Login --- */
+/* ==========================
+   Login
+========================== */
 const formLogin = document.getElementById("form-login");
 if (formLogin) {
   const email = byName(formLogin, "email");
@@ -181,8 +207,8 @@ if (formLogin) {
 
   const v = {
     email(){ 
-      const v = email.value.trim();
-      if (!isEmail(v)) return setError(email, "Email inválido");
+      const val = email.value.trim();
+      if (!isEmail(val)) return setError(email, "Email inválido");
       setOK(email);
       return true;
     },
@@ -202,7 +228,7 @@ if (formLogin) {
     msgGlobal.textContent = "";
 
     if (![v.email(), v.password()].every(Boolean)) {
-      msgGlobal.textContent = "Revisa los campos marcados en rojo.";
+      msgGlobal.textContent = "Revisá los campos marcados en rojo.";
       return;
     }
 
@@ -217,9 +243,13 @@ if (formLogin) {
       });
       const data = await res.json();
       if (!res.ok) throw data;
+
       localStorage.setItem("token", data.token);
       msgGlobal.textContent = "¡Bienvenido!";
-      setTimeout(() => (window.location.href = "/"), 600);
+
+      // Redirigir según rol devuelto por el backend
+      const next = (data?.user?.role === "designer") ? "/upload.html" : "/";
+      setTimeout(() => (window.location.href = next), 600);
     } catch (err) {
       msgGlobal.textContent = err?.error || "Error al ingresar";
     }

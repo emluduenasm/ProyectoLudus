@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <!-- Header -->
   <header class="site-header">
     <div class="container nav">
       <a class="brand" href="/">
@@ -34,7 +33,7 @@
       <div class="form-card">
         <h1 class="form-title"><i class="fa-solid fa-right-to-bracket"></i> Iniciar sesión</h1>
 
-        <form id="form-login" class="form-grid">
+        <form id="form-login" class="form-grid" novalidate>
           <label>Email
             <input type="email" name="email" required />
           </label>
@@ -51,7 +50,6 @@
     </section>
   </main>
 
-  <!-- Footer -->
   <footer class="site-footer">
     <div class="container footer-grid">
       <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
@@ -65,5 +63,6 @@
     navToggle?.addEventListener('click', () => menu.classList.toggle('open'));
   </script>
   <script src="/js/auth.js" defer></script>
+  <script src="/js/auth-ui.js" defer></script>
 </body>
 </html>

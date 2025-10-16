@@ -1,68 +1,93 @@
 // /public/js/home.js
-console.log("[home] script cargado");
+const api = (p) => p.startsWith("/api") ? p : `/api${p}`;
+const qs = (s, r=document) => r.querySelector(s);
 
-const renderFeaturedDesigns = async () => {
-  const grid = document.getElementById("featured-grid");
+/* ------------------ Diseños destacados ------------------ */
+async function loadFeatured(limit = 6) {
+  const grid = qs("#featured-grid");
   if (!grid) return;
-  grid.innerHTML = `<p class="muted">Cargando diseños destacados…</p>`;
+  grid.innerHTML = `<p class="muted">Cargando…</p>`;
+
   try {
-    const res = await fetch("/api/designs/featured?limit=6");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const res = await fetch(api(`/designs/featured?limit=${limit}`));
     const items = await res.json();
-    if (!Array.isArray(items) || items.length === 0) {
-      grid.innerHTML = `<p class="muted">Aún no hay diseños destacados.</p>`;
+    if (!res.ok) throw items;
+
+    if (!items.length) {
+      grid.innerHTML = `<p class="muted">No hay diseños destacados aún.</p>`;
       return;
     }
+
     grid.innerHTML = items.map(x => `
-      <article class="card">
+      <article class="card" data-id="${x.id}" style="cursor:pointer">
         <div class="card-media">
-          <img src="${x.image_url}" alt="${x.title}" loading="lazy" />
+          <img src="${x.thumbnail_url || x.image_url}" alt="${x.title}" loading="lazy" />
         </div>
         <div class="card-body">
           <h3>${x.title}</h3>
-          <p class="muted">Diseñador: ${x.designer_name ?? "Anónimo"}</p>
-          <p class="muted">${new Date(x.created_at).toLocaleDateString("es-AR")}</p>
-          <p class="muted" title="Me gusta"><i class="fa-solid fa-heart"></i> ${x.likes ?? 0}</p>
+          <p class="muted">${x.designer_name} ·
+            <i class="fa-solid fa-heart"></i> ${x.likes ?? 0}</p>
         </div>
       </article>
     `).join("");
-  } catch (e) {
-    console.error("[home] featured designs error:", e);
-    grid.innerHTML = `<p class="muted">No se pudieron cargar los diseños.</p>`;
-  }
-};
 
-const renderFeaturedDesigners = async () => {
-  const grid = document.getElementById("designers-grid");
+    grid.querySelectorAll(".card").forEach(card => {
+      card.addEventListener("click", () => {
+        const id = card.dataset.id;
+        location.href = `/design.html?id=${id}`;
+      });
+    });
+
+  } catch (err) {
+    console.error(err);
+    grid.innerHTML = `<p class="muted">No se pudieron cargar los destacados.</p>`;
+  }
+}
+
+/* ------------------ Diseñadores destacados ------------------ */
+async function loadFeaturedDesigners(limit = 8) {
+  const grid = qs("#designers-grid");
   if (!grid) return;
-  grid.innerHTML = `<p class="muted">Cargando diseñadores destacados…</p>`;
+  grid.innerHTML = `<p class="muted">Cargando…</p>`;
+
   try {
-    const res = await fetch("/api/designers/featured?limit=6");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const res = await fetch(api(`/designers/featured?limit=${limit}`)); // el SQL ya limita a 12
     const items = await res.json();
-    if (!Array.isArray(items) || items.length === 0) {
-      grid.innerHTML = `<p class="muted">Aún no hay diseñadores destacados.</p>`;
+    if (!res.ok) throw items;
+
+    if (!items.length) {
+      grid.innerHTML = `<p class="muted">Todavía no hay diseñadores destacados.</p>`;
       return;
     }
-    grid.innerHTML = items.map(x => `
-      <article class="card designer">
-        <div class="card-media circle">
-          <img src="${x.avatar_url}" alt="${x.display_name}" loading="lazy" />
+
+    grid.innerHTML = items.slice(0, limit).map(d => `
+      <article class="card designer" data-id="${d.id}" style="cursor:pointer">
+        <div class="card-media avatar">
+          <img src="${d.avatar_url || '/img/disenador1.jpg'}" alt="${d.name}" loading="lazy" />
         </div>
         <div class="card-body">
-          <h3>${x.display_name}</h3>
-          <p class="muted">${x.designs_count} diseño(s) · <i class="fa-solid fa-heart"></i> ${x.total_likes}</p>
+          <h3>${d.name}</h3>
+          <p class="muted"><i class="fa-solid fa-heart"></i> ${d.likes ?? 0}</p>
         </div>
       </article>
     `).join("");
-  } catch (e) {
-    console.error("[home] featured designers error:", e);
-    grid.innerHTML = `<p class="muted">No se pudieron cargar los diseñadores.</p>`;
+
+    // Por ahora, al click te llevo a la página general de diseñadores (o futura ficha)
+    grid.querySelectorAll(".card").forEach(card => {
+      card.addEventListener("click", () => {
+        // Si luego tienes un detalle de diseñador, cambia aquí a /designer.html?id=...
+        location.href = "/disenadores.html";
+      });
+    });
+
+  } catch (err) {
+    console.error(err);
+    grid.innerHTML = `<p class="muted">No se pudieron cargar los diseñadores destacados.</p>`;
   }
-};
+}
 
-const initHome = async () => {
-  await Promise.all([renderFeaturedDesigns(), renderFeaturedDesigners()]);
-};
-
-document.addEventListener("DOMContentLoaded", initHome);
+/* ------------------ Init ------------------ */
+document.addEventListener("DOMContentLoaded", () => {
+  loadFeatured(6);
+  loadFeaturedDesigners(8);
+});
