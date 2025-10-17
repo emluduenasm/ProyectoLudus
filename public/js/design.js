@@ -1,160 +1,164 @@
 // /public/js/design.js
 (() => {
   const api = (p) => (p.startsWith("/api") ? p : `/api${p}`);
-  const $$ = (s, r = document) => r.querySelector(s);
+  const $ = (s, r=document) => r.querySelector(s);
+
+  const qs = new URLSearchParams(location.search);
+  const id = qs.get("id");
+
   const token = localStorage.getItem("token") || "";
-  const authHeaders = () => (token ? { Authorization: `Bearer ${token}` } : {});
+  const auth = () => (token ? { Authorization: `Bearer ${token}` } : {});
 
-  function getDesignIdFromLocation() {
-    const url = new URL(location.href);
-    const qId = url.searchParams.get("id");
-    if (qId) return qId.trim();
-    const h = (url.hash || "").replace(/^#/, "").trim();
-    if (h) return h;
-    return null;
+  const wrap = $("#detail");
+
+  if (!id) {
+    wrap.innerHTML = `<div class="card" style="grid-column:1/-1">ID de diseño inválido.</div>`;
+    return;
   }
 
-  window.addEventListener("error", (ev) => {
-    const c = $$("#design-detail");
-    if (c) c.innerHTML = `<p style="color:#b91c1c">Error de script: ${ev.message}</p>`;
-    console.error("[design] window error:", ev.error || ev.message);
-  });
-
-  function likeButtonHTML({ liked, likes, logged }) {
-    if (!logged) {
-      return `
-        <a class="btn" href="/login.html">
-          <i class="fa-solid fa-heart"></i> Iniciar sesión para dar Me gusta
-        </a>
-        <span class="muted" style="margin-left:.5rem"><i class="fa-solid fa-heart"></i> ${likes}</span>
-      `;
-    }
-    const activeClass = liked ? "btn-primary" : "btn";
-    const icon = liked ? "fa-solid fa-heart" : "fa-regular fa-heart";
-    return `
-      <button id="likeBtn" type="button" class="${activeClass}">
-        <i class="${icon}"></i> ${liked ? "Te gusta" : "Me gusta"}
-      </button>
-      <span id="likeCount" class="muted" style="margin-left:.5rem"><i class="fa-solid fa-heart"></i> ${likes}</span>
-    `;
+  async function fetchJSON(url, opts={}) {
+    const res = await fetch(url, { ...opts, cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
   }
 
-  async function safeJSON(res) {
-    try { return await res.json(); } catch { return null; }
-  }
-
-  async function fetchDesign(id) {
-    const res = await fetch(api(`/designs/${encodeURIComponent(id)}`), {
-      headers: { Accept: "application/json" },
-    });
-    const data = await safeJSON(res);
-    if (!res.ok) throw (data || { error: "Error HTTP " + res.status });
-    return data;
-  }
-
-  async function fetchLiked(id) {
-    if (!token) return { liked: false, available: false };
+  async function getMe() {
+    if (!token) return null;
     try {
-      const res = await fetch(api(`/designs/${encodeURIComponent(id)}/like`), {
-        headers: { ...authHeaders(), Accept: "application/json" },
+      const res = await fetch(api("/auth/me"), {
+        headers: { ...auth(), "Accept":"application/json" },
+        cache: "no-store"
       });
-      // Si el endpoint no existe (404) o no hay auth (401), devolvemos estado por defecto
-      if (!res.ok) return { liked: false, available: false };
-      const data = await safeJSON(res);
-      return { liked: !!(data && data.liked), available: true };
+      if (!res.ok) return null;
+      return await res.json();
     } catch {
-      return { liked: false, available: false };
-    }
-  }
-
-  async function toggleLike(id) {
-    const res = await fetch(api(`/designs/${encodeURIComponent(id)}/like`), {
-      method: "POST",
-      headers: { ...authHeaders(), Accept: "application/json" },
-    });
-    if (res.status === 401) {
-      location.href = "/login.html";
       return null;
     }
-    const data = await safeJSON(res);
-    if (!res.ok) throw (data || { error: "Error HTTP " + res.status });
-    return data; // { liked, likes }
   }
 
-  async function loadDesign() {
-    const container = $$("#design-detail");
-    const id = getDesignIdFromLocation();
+  function render(d, liked=false, me=null) {
+    // Contenedor izquierdo alto fijo adaptable y la imagen llena el cuadro manteniendo proporciones
+    wrap.innerHTML = `
+      <div class="preview card" style="
+        display:flex;align-items:center;justify-content:center;
+        background:#f8fafc;border-radius:16px;
+        height:clamp(320px,60vh,720px); /* Alto flexible */
+        padding:0.5rem;
+      ">
+        <img src="${d.image_url}" alt="${d.title}"
+             style="width:100%;height:100%;object-fit:contain;border-radius:12px;" />
+      </div>
 
-    if (!container) return;
-    if (!id) {
-      container.innerHTML = `<p>ID de diseño no especificado. Volvé y abrí el diseño desde una tarjeta.</p>`;
-      return;
-    }
-
-    try {
-      // 1) Detalle del diseño (si esto falla, mostramos error)
-      const data = await fetchDesign(id);
-
-      // 2) Estado de like (si esto falla, NO rompemos la vista)
-      const logged = !!token;
-      const likedState = await fetchLiked(id); // { liked, available }
-
-      container.innerHTML = `
-        <div>
-          <img src="${data.image_url}" alt="${data.title}"
-              style="border-radius:12px;width:100%;max-height:520px;object-fit:contain;background:#f8fafc"/>
-        </div>
-        <div>
-          <h1>${data.title}</h1>
-          ${data.description ? `<p>${data.description}</p>` : `<p class="muted">Sin descripción.</p>`}
-
-          <div class="meta" style="margin-top:1rem;color:#555;font-size:0.95rem;">
-            <span><i class="fa-solid fa-user"></i> ${data.designer_name}</span>
-            <span><i class="fa-solid fa-calendar"></i> ${new Date(data.created_at).toLocaleDateString("es-AR")}</span>
-            <span><i class="fa-solid fa-heart"></i> ${data.likes}</span>
+      <aside class="meta">
+        <div class="card" style="padding:1.5rem;">
+          <h1 style="margin-top:0">${d.title}</h1>
+          <div class="muted">
+            por <strong>${d.designer_name || "anónimo"}</strong>
+            ${d.category_name ? `<span class="badge">${d.category_name}</span>` : ""}
           </div>
 
-          <div id="likeArea" style="margin-top:1rem;">
-            ${
-              likedState.available
-                ? likeButtonHTML({ liked: likedState.liked, likes: data.likes ?? 0, logged })
-                : `<span class="muted"><i class="fa-solid fa-heart"></i> ${data.likes ?? 0}</span>`
-            }
+          <div class="likes" style="display:flex;align-items:center;gap:8px;margin-top:14px">
+            <button id="btnLike" class="btn btn-like ${liked ? "liked": ""}">
+              <i class="fa-solid fa-heart"></i>
+              <span id="likeText">${liked ? "Te gusta" : "Me gusta"}</span>
+            </button>
+            <span id="likeCount" class="muted">${d.likes ?? 0}</span>
           </div>
-        </div>
-      `;
 
-      // 3) Listener del botón like (si el endpoint no existe, no mostramos botón)
-      if (logged && likedState.available) {
-        const likeBtn = $$("#likeBtn");
-        const likeCountEl = $$("#likeCount");
-        if (likeBtn) {
-          likeBtn.addEventListener("click", async () => {
-            try {
-              likeBtn.disabled = true;
-              const r = await toggleLike(id); // { liked, likes }
-              if (!r) return;
-              likeBtn.className = r.liked ? "btn-primary" : "btn";
-              likeBtn.innerHTML = `<i class="${r.liked ? "fa-solid fa-heart" : "fa-regular fa-heart"}"></i> ${r.liked ? "Te gusta" : "Me gusta"}`;
-              if (likeCountEl) likeCountEl.innerHTML = `<i class="fa-solid fa-heart"></i> ${r.likes}`;
-            } catch (err) {
-              console.error(err);
-            } finally {
-              likeBtn.disabled = false;
-            }
-          });
-        }
+          ${me?.role === "admin" ? `
+            <div style="margin-top:.75rem">
+              <button id="btnDownload" class="btn">
+                <i class="fa-solid fa-download"></i> Descargar diseño
+              </button>
+            </div>
+          ` : ""}
+
+          <div style="margin-top:1.2rem;">
+            <h3 style="margin-bottom:.5rem;">Descripción</h3>
+            <p id="desc" style="color:#334155;white-space:pre-wrap;">
+              ${d.description ? d.description : "Este diseño aún no tiene descripción."}
+            </p>
+          </div>
+
+          <p class="muted" style="margin-top:1.5rem">
+            Publicado: ${new Date(d.created_at).toLocaleDateString("es-AR")}
+          </p>
+        </div>
+      </aside>
+    `;
+
+    // Like handler
+    $("#btnLike")?.addEventListener("click", async () => {
+      if (!token) {
+        location.href = `/login.html?next=${encodeURIComponent(location.pathname + location.search)}`;
+        return;
       }
-    } catch (err) {
-      console.error("[design] error:", err);
-      const msg = err?.error || "No se pudo cargar el diseño.";
-      container.innerHTML = `<p>${msg}</p>`;
+      try {
+        const r = await fetchJSON(api(`/designs/${id}/like`), {
+          method: "POST",
+          headers: { ...auth() },
+        });
+        $("#btnLike").classList.toggle("liked", r.liked);
+        $("#likeText").textContent = r.liked ? "Te gusta" : "Me gusta";
+        $("#likeCount").textContent = r.likes;
+      } catch (e) {
+        console.error(e);
+        alert("No se pudo actualizar tu me gusta.");
+      }
+    });
+
+    // Descargar (solo admin)
+    if (me?.role === "admin") {
+      $("#btnDownload")?.addEventListener("click", async () => {
+        try {
+          const res = await fetch(d.image_url, { credentials: "same-origin", cache: "no-store" });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const blob = await res.blob();
+          const a = document.createElement("a");
+          const ext = (d.image_url.split(".").pop() || "jpg").split("?")[0];
+          a.href = URL.createObjectURL(blob);
+          a.download = `${(d.title || "design").replace(/\s+/g,"_")}.${ext}`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 1200);
+        } catch (e) {
+          console.error(e);
+          alert("No se pudo descargar la imagen.");
+        }
+      });
+    }
+  }
+
+  async function load() {
+    try {
+      const [d, me] = await Promise.all([
+        fetchJSON(api(`/designs/${id}`)),
+        getMe()
+      ]);
+
+      // Si hay sesión, pregunto si ya di like
+      let liked = false;
+      if (token) {
+        try {
+          const s = await fetch(api(`/designs/${id}/like`), { headers: { ...auth() }, cache:"no-store" });
+          if (s.ok) {
+            const j = await s.json();
+            liked = !!j.liked;
+          }
+        } catch {}
+      }
+
+      render(d, liked, me);
+    } catch (e) {
+      console.error(e);
+      wrap.innerHTML = `<div class="card" style="grid-column:1/-1">No se pudo cargar el diseño.</div>`;
     }
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", loadDesign, { once: true });
+    document.addEventListener("DOMContentLoaded", load, { once:true });
   } else {
-    loadDesign();
+    load();
   }
 })();

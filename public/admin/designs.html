@@ -8,8 +8,16 @@
   <link rel="stylesheet" href="/styles.css"/>
   <style>
     .admin-wrap{max-width:1100px;margin:2rem auto;padding:1rem}
-    .toolbar{display:flex;gap:.5rem;align-items:center;margin-bottom:1rem}
+    .toolbar{display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem}
     .toolbar input{flex:1}
+    .filters{
+      display:grid;
+      grid-template-columns: 1fr 140px 150px 1fr 1fr 160px 120px;
+      gap:.5rem;
+      align-items: end;
+      margin: .5rem 0 1rem;
+    }
+    .filters .form-group label{font-size:.82rem;color:#64748b;margin-bottom:.25rem;display:block}
     table{width:100%;border-collapse:separate;border-spacing:0 .5rem}
     td,th{padding:.6rem .8rem;background:#fff}
     th{color:#334155;text-align:left}
@@ -27,12 +35,13 @@
     .switch:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s ease}
     .switch:checked{background:#2563eb}
     .switch:checked:after{transform:translateX(18px)}
+    .right{text-align:right}
   </style>
 </head>
 <body>
   <header class="site-header">
     <div class="container nav">
-      <a class="brand" href="/"><img src="/img/logo.png" alt="Logo"/><div class="brand-text"><strong>LUDUS</strong><span>stamps</span></div></a>
+      <a class="brand" href="/"><img src="/img/logo.png" alt="Logo"/></a>
       <nav class="menu">
         <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
         <a href="/upload.html"><i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño</a>
@@ -43,10 +52,60 @@
   <main class="admin-wrap">
     <h1>Panel admin · Diseños</h1>
 
+    <!-- Buscador rápido -->
     <div class="toolbar">
       <input id="q" type="search" class="input" placeholder="Buscar por título o diseñador…"/>
       <button id="btnSearch" class="btn"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
       <span id="resultInfo" class="muted-sm"></span>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="filters">
+      <div class="form-group">
+        <label for="fCategory">Categoría</label>
+        <select id="fCategory" class="input">
+          <option value="">Todas</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="fPublished">Publicado</label>
+        <select id="fPublished" class="input">
+          <option value="">Todos</option>
+          <option value="1">Sí</option>
+          <option value="0">No</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="fSort">Ordenar por</label>
+        <select id="fSort" class="input">
+          <option value="newest">Más nuevos</option>
+          <option value="oldest">Más antiguos</option>
+          <option value="likes_desc">Más likes</option>
+          <option value="likes_asc">Menos likes</option>
+          <option value="title_asc">Título A–Z</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="fFrom">Desde</label>
+        <input id="fFrom" type="date" class="input"/>
+      </div>
+      <div class="form-group">
+        <label for="fTo">Hasta</label>
+        <input id="fTo" type="date" class="input"/>
+      </div>
+      <div class="form-group">
+        <label for="fLimit">Por página</label>
+        <select id="fLimit" class="input">
+          <option>10</option>
+          <option>20</option>
+          <option>30</option>
+          <option>50</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>&nbsp;</label>
+        <button id="btnClear" class="btn btn-outline"><i class="fa-solid fa-eraser"></i> Limpiar</button>
+      </div>
     </div>
 
     <div class="table-wrap">
@@ -56,6 +115,7 @@
             <th>Imagen</th>
             <th>Título</th>
             <th>Diseñador</th>
+            <th>Categoría</th>
             <th>Likes</th>
             <th>Publicado</th>
             <th class="right">Acciones</th>
@@ -81,6 +141,9 @@
         </label>
         <label>Descripción
           <textarea class="input" name="description" rows="4" placeholder="Opcional"></textarea>
+        </label>
+        <label>Categoría
+          <select class="input" id="selCategory" name="category_id"></select>
         </label>
         <label style="display:flex;gap:.5rem;align-items:center">
           <input type="checkbox" name="published" class="switch"/> <span>Publicado</span>

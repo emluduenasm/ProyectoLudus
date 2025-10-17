@@ -1,83 +1,56 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ludus Stamps – Productos Personalizados</title>
-
-  <!-- Iconos -->
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Ludus Stamps</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
-
-  <!-- Estilos -->
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css"/>
 </head>
 <body>
-  <!-- Header / Navbar -->
   <header class="site-header">
     <div class="container nav">
       <a class="brand" href="/">
-        <img src="/img/logo.png" alt="Logo de Ludus Stamps" />
-        <div class="brand-text">
-          <strong>LUDUS</strong><span>stamps</span>
-        </div>
+        <img src="/img/logo.png" alt="Logo"/>
       </a>
-
-      <button class="nav-toggle" id="navToggle" aria-label="Abrir menú">
-        <i class="fa-solid fa-bars"></i>
-      </button>
-
-      <nav class="menu" id="menu">
+      <nav class="menu">
         <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
-        <a href="/disenadores.html"><i class="fa-solid fa-users"></i> Diseñadores</a>
-        <a href="/disenos.html"><i class="fa-solid fa-palette"></i> Diseños</a>
-        <a href="/login.html" class="link-muted"><i class="fa-solid fa-right-to-bracket"></i> Iniciar sesión</a>
-        <a href="/register.html" class="btn btn-primary"><i class="fa-solid fa-user-plus"></i> Registrarse</a>
+        <a href="/designers.html"><i class="fa-solid fa-users"></i> Diseñadores</a>
+        <a href="/designs.html"><i class="fa-solid fa-palette"></i> Diseños</a>
       </nav>
     </div>
   </header>
 
-  <!-- Hero -->
-  <section class="hero">
-    <div class="container hero-grid">
-      <div class="hero-copy">
-        <h1>Bienvenido a nuestro sitio de <span class="accent">Productos Personalizados</span></h1>
+  <main class="container home">
+    <section class="hero">
+      <div class="hero-text">
+        <h1>Bienvenido a nuestro sitio de<br/><span>Productos Personalizados</span></h1>
         <p>Elegí el diseño que más te guste y nosotros lo estampamos en el producto que necesitás.</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="/register.html">Crear cuenta</a>
-          <a class="btn btn-outline" href="/disenos.html">Ver diseños</a>
+        <div class="actions">
+          <a class="btn btn-primary" href="/register.html"><i class="fa-solid fa-user-plus"></i> Crear cuenta</a>
+          <a class="btn btn-outline" href="/designs.html"><i class="fa-solid fa-magnifying-glass"></i> Ver diseños</a>
         </div>
       </div>
-      <div class="hero-art" aria-hidden="true">
-        <div class="dots"></div>
-      </div>
-    </div>
-  </section>
+      <div class="hero-bg" aria-hidden="true"></div>
+    </section>
 
-  <!-- Diseños destacados (dinámico) -->
-  <section class="section">
-    <div class="container">
-      <div class="section-head">
+    <section class="section">
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center">
         <h2>Diseños destacados</h2>
-        <a class="link" href="/disenos.html">Ver todos <i class="fa-solid fa-arrow-right"></i></a>
+        <a class="link" href="/designs.html">Ver todos <i class="fa-solid fa-arrow-right-long"></i></a>
       </div>
+      <div id="featured-designs" class="cards" aria-live="polite"></div>
+    </section>
 
-      <div class="grid" id="featured-grid">
-        <!-- Se completa por JS -->
+    <section class="section">
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center">
+        <h2>Diseñadores destacados</h2>
+        <a class="link" href="/designers.html">Ver todos <i class="fa-solid fa-arrow-right-long"></i></a>
       </div>
-    </div>
-  </section>
+      <div id="featured-designers" class="cards" aria-live="polite"></div>
+    </section>
+  </main>
 
-  <section class="section alt">
-  <div class="container">
-    <div class="section-head">
-      <h2>Diseñadores destacados</h2>
-      <a class="link" href="/disenadores.html">Ver todos <i class="fa-solid fa-arrow-right"></i></a>
-    </div>
-    <div class="grid" id="designers-grid"><!-- JS --></div>
-  </div>
-</section>
-
-  <!-- Footer -->
   <footer class="site-footer">
     <div class="container footer-grid">
       <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
@@ -85,8 +58,7 @@
     </div>
   </footer>
 
-  <!-- Scripts -->
-  <script src="/js/home.js" defer></script>
   <script src="/js/auth-ui.js" defer></script>
+  <script src="/js/home.js" defer></script>
 </body>
 </html>

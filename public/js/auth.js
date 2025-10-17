@@ -62,7 +62,7 @@ const isDNI = (v) => /^\d{8}$/.test(v);
 /* Fuerza de contraseña */
 const hasUpper = (s) => /[A-Z]/.test(s);
 const hasLower = (s) => /[a-z]/.test(s);
-const hasDigit = (s) => /\d/.test(s);
+const hasDigit  = (s) => /\d/.test(s);
 const passwordScore = (p) => {
   let s = 0;
   if (p.length >= 8) s++;
@@ -73,9 +73,9 @@ const passwordScore = (p) => {
 };
 
 /* ==========================
-   Registro
+   Registro (usa #registerForm)
 ========================== */
-const formRegister = document.getElementById("form-register");
+const formRegister = document.getElementById("registerForm");
 if (formRegister) {
   const firstName = byName(formRegister, "first_name");
   const lastName  = byName(formRegister, "last_name");
@@ -83,14 +83,42 @@ if (formRegister) {
   const username  = byName(formRegister, "username");
   const email     = byName(formRegister, "email");
   const password  = byName(formRegister, "password");
-  const usePref   = byName(formRegister, "usePreference");
-  const msgGlobal = document.getElementById("msg-register");
+  const usePref   = byName(formRegister, "use_preference");
 
-  // Medidor visual de contraseña
+  // Mensaje global (lo creo si no existe)
+  let msgGlobal = document.getElementById("msg-register");
+  if (!msgGlobal) {
+    msgGlobal = document.createElement("p");
+    msgGlobal.id = "msg-register";
+    msgGlobal.className = "muted";
+    // lo agrego al final del formulario
+    const actions = formRegister.querySelector(".form-actions") || formRegister;
+    actions.appendChild(msgGlobal);
+  }
+
+  // Medidor visual de contraseña (barra simple)
   const meter = document.createElement("div");
   meter.className = "pw-meter";
   meter.innerHTML = "<i></i>";
+  // estilo básico por si no existía en CSS (no pisa tus estilos si ya están)
+  meter.style.height = "6px";
+  meter.style.borderRadius = "999px";
+  meter.style.background = "#e5edf5";
+  meter.style.marginTop = "6px";
+  meter.querySelector("i").style.display = "block";
+  meter.querySelector("i").style.height = "100%";
+  meter.querySelector("i").style.width = "0%";
+  meter.querySelector("i").style.borderRadius = "999px";
+  meter.querySelector("i").style.transition = "width .2s ease";
   password.parentElement.appendChild(meter);
+
+  function paintMeter(score) {
+    const i = meter.querySelector("i");
+    const widths = ["0%", "25%", "50%", "75%", "100%"];
+    const colors = ["#e5edf5", "#ff6b6b", "#f7c948", "#7ad37a", "#22c55e"];
+    i.style.width = widths[score];
+    i.style.background = colors[score];
+  }
 
   const v = {
     firstName(){ 
@@ -113,25 +141,25 @@ if (formRegister) {
       return true;
     },
     username(){
-      const v = username.value.trim();
-      if (!isUsername(v)) return setError(username, "Alias inválido (3–30: letras, números, . _ -)");
+      const val = username.value.trim();
+      if (!isUsername(val)) return setError(username, "Alias inválido (3–30: letras, números, . _ -)");
       setOK(username);
       return true;
     },
     email(){
-      const v = email.value.trim();
-      if (!isEmail(v)) return setError(email, "Email inválido");
+      const val = email.value.trim();
+      if (!isEmail(val)) return setError(email, "Email inválido");
       setOK(email);
       return true;
     },
     password(){
       const p = password.value;
       const score = passwordScore(p);
-      meter.dataset.score = String(score);
-      if (p.length < 8) return setError(password, "Mínimo 8 caracteres");
-      if (!hasUpper(p)) return setError(password, "Debe incluir una mayúscula");
-      if (!hasLower(p)) return setError(password, "Debe incluir una minúscula");
-      if (!hasDigit(p)) return setError(password, "Debe incluir un número");
+      paintMeter(score);
+      if (p.length < 8)   return setError(password, "Mínimo 8 caracteres");
+      if (!hasUpper(p))   return setError(password, "Debe incluir una mayúscula");
+      if (!hasLower(p))   return setError(password, "Debe incluir una minúscula");
+      if (!hasDigit(p))   return setError(password, "Debe incluir un número");
       setOK(password, score >= 3 ? "Fuerte" : "Aceptable");
       return true;
     },
@@ -154,6 +182,7 @@ if (formRegister) {
   formRegister.addEventListener("submit", async (e) => {
     e.preventDefault();
     msgGlobal.textContent = "";
+    msgGlobal.className = "muted";
 
     const allOK = [
       v.firstName(), v.lastName(), v.dni(),
@@ -162,11 +191,13 @@ if (formRegister) {
 
     if (!allOK) {
       msgGlobal.textContent = "Revisá los campos marcados en rojo.";
+      msgGlobal.className = "error";
       return;
     }
 
     const f = new FormData(formRegister);
-    const payload = Object.fromEntries(f.entries()); // incluye usePreference
+    // Enviamos tal cual (incluye use_preference)
+    const payload = Object.fromEntries(f.entries());
 
     try {
       const res = await fetch(api("/register"), {
@@ -179,11 +210,14 @@ if (formRegister) {
 
       localStorage.setItem("token", data.token);
       msgGlobal.textContent = "¡Cuenta creada! Redirigiendo…";
-      // Redirige según preferencia (server mapea a role)
-      const next = (payload.usePreference === "upload") ? "/upload.html" : "/";
+      msgGlobal.className = "ok";
+
+      // Redirige según preferencia (el backend mapea a rol)
+      const next = (payload.use_preference === "upload") ? "/upload.html" : "/";
       setTimeout(() => (window.location.href = next), 700);
     } catch (err) {
       msgGlobal.textContent = err?.error || "Error al registrar";
+      msgGlobal.className = "error";
       if (err?.details) {
         // Marca campos con errores devueltos por el backend (Zod)
         err.details.forEach((d) => {
@@ -197,13 +231,19 @@ if (formRegister) {
 }
 
 /* ==========================
-   Login
+   Login (sin cambios)
 ========================== */
 const formLogin = document.getElementById("form-login");
 if (formLogin) {
   const email = byName(formLogin, "email");
   const password = byName(formLogin, "password");
-  const msgGlobal = document.getElementById("msg-login");
+  const msgGlobal = document.getElementById("msg-login") || (() => {
+    const p = document.createElement("p");
+    p.id = "msg-login";
+    p.className = "muted";
+    formLogin.appendChild(p);
+    return p;
+  })();
 
   const v = {
     email(){ 
@@ -226,9 +266,11 @@ if (formLogin) {
   formLogin.addEventListener("submit", async (e) => {
     e.preventDefault();
     msgGlobal.textContent = "";
+    msgGlobal.className = "muted";
 
     if (![v.email(), v.password()].every(Boolean)) {
       msgGlobal.textContent = "Revisá los campos marcados en rojo.";
+      msgGlobal.className = "error";
       return;
     }
 
@@ -246,12 +288,14 @@ if (formLogin) {
 
       localStorage.setItem("token", data.token);
       msgGlobal.textContent = "¡Bienvenido!";
+      msgGlobal.className = "ok";
 
       // Redirigir según rol devuelto por el backend
       const next = (data?.user?.role === "designer") ? "/upload.html" : "/";
       setTimeout(() => (window.location.href = next), 600);
     } catch (err) {
       msgGlobal.textContent = err?.error || "Error al ingresar";
+      msgGlobal.className = "error";
     }
   });
 }

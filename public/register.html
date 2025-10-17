@@ -1,89 +1,80 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Crear cuenta – Ludus Stamps</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Crear cuenta · Ludus Stamps</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css"/>
 </head>
 <body>
-  <!-- Header -->
   <header class="site-header">
     <div class="container nav">
       <a class="brand" href="/">
-        <img src="/img/logo.png" alt="Logo de Ludus Stamps" />
-        <div class="brand-text"><strong>LUDUS</strong><span>stamps</span></div>
+        <img src="/img/logo.png" alt="Logo"/>
       </a>
-
-      <button class="nav-toggle" id="navToggle" aria-label="Abrir menú">
-        <i class="fa-solid fa-bars"></i>
-      </button>
-
-      <nav class="menu" id="menu">
+      <nav class="menu">
         <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
-        <a href="/disenadores.html"><i class="fa-solid fa-users"></i> Diseñadores</a>
-        <a href="/disenos.html"><i class="fa-solid fa-palette"></i> Diseños</a>
-        <a href="/login.html" class="link-muted"><i class="fa-solid fa-right-to-bracket"></i> Iniciar sesión</a>
+        <a href="/designers.html"><i class="fa-solid fa-users"></i> Diseñadores</a>
+        <a href="/designs.html"><i class="fa-solid fa-palette"></i> Diseños</a>
       </nav>
     </div>
   </header>
 
-  <main class="page">
-    <section class="container">
-      <div class="form-card">
-        <h1 class="form-title"><i class="fa-solid fa-user-plus"></i> Crear cuenta</h1>
+  <main class="container auth-wrap">
+    <div class="auth-card">
+      <h1 class="auth-title"><i class="fa-solid fa-user-plus"></i> Crear cuenta</h1>
 
-        <form id="form-register" class="form-grid" novalidate>
-          <div class="grid-2">
-            <label>Nombres
-              <input name="first_name" required minlength="2"
-                     pattern="[\p{L}ÁÉÍÓÚáéíóúÑñÜü' -]{2,80}" />
-            </label>
-            <label>Apellidos
-              <input name="last_name" required minlength="2"
-                     pattern="[\p{L}ÁÉÍÓÚáéíóúÑñÜü' -]{2,80}" />
-            </label>
+      <form id="registerForm" novalidate>
+        <div class="form-grid">
+          <div class="form-col-1">
+            <label for="first_name">Nombres</label>
+            <input id="first_name" name="first_name" type="text" autocomplete="given-name" required />
+          </div>
+          <div class="form-col-1">
+            <label for="last_name">Apellidos</label>
+            <input id="last_name" name="last_name" type="text" autocomplete="family-name" required />
           </div>
 
-          <div class="grid-2">
-            <label>DNI
-              <input name="dni" required inputmode="numeric" maxlength="8" pattern="\d{8}" />
-            </label>
-            <label>Alias / Nombre de usuario
-              <input name="username" required minlength="3" pattern="[a-zA-Z0-9._-]+" />
-              <small>Usa letras, números, punto, guión o guión bajo</small>
-            </label>
+          <div class="form-col-1">
+            <label for="dni">DNI</label>
+            <input id="dni" name="dni" type="text" inputmode="numeric" maxlength="8" required />
+            <div class="hint">8 dígitos numéricos.</div>
+          </div>
+          <div class="form-col-1">
+            <label for="username">Alias / Nombre de usuario</label>
+            <input id="username" name="username" type="text" autocomplete="username" required />
+            <div class="hint">Usá letras, números, punto o guión bajo.</div>
           </div>
 
-          <label>Email
-            <input type="email" name="email" required />
-          </label>
-
-          <label>Contraseña
-            <input type="password" name="password" required minlength="8" />
-            <small>Mín 8, con mayúscula, minúscula y número</small>
-          </label>
-
-          <div class="grid-2">
-            <label>Preferencia de uso
-              <select name="usePreference" required>
-                <option value="buy">Comprar</option>
-                <option value="upload">Subir diseños</option>
-              </select>
-            </label>
+          <div class="form-col-1">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required />
+          </div>
+          <div class="form-col-1">
+            <label for="password">Contraseña</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" required />
+            <div class="hint">Mínimo 8, con mayúscula, minúscula y número.</div>
           </div>
 
+          <div class="form-col-2">
+            <label for="use_preference">Preferencia de uso</label>
+            <select id="use_preference" name="use_preference" required>
+              <option value="buy">Comprar</option>
+              <option value="upload">Subir diseños</option>
+              <option value="both">Ambos</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-actions">
           <button class="btn btn-primary" type="submit">Crear cuenta</button>
-          <p class="msg" id="msg-register"></p>
-
-          <p class="muted center">¿Ya tenés cuenta? <a class="link" href="/login.html">Ingresá</a></p>
-        </form>
-      </div>
-    </section>
+          <span class="auth-links">¿Ya tenés cuenta? <a class="link" href="/login.html">Ingresá</a></span>
+        </div>
+      </form>
+    </div>
   </main>
 
-  <!-- Footer -->
   <footer class="site-footer">
     <div class="container footer-grid">
       <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
@@ -91,12 +82,7 @@
     </div>
   </footer>
 
-  <script>
-    const navToggle = document.getElementById('navToggle');
-    const menu = document.getElementById('menu');
-    navToggle?.addEventListener('click', () => menu.classList.toggle('open'));
-  </script>
-  <script src="/js/auth.js" defer></script>
   <script src="/js/auth-ui.js" defer></script>
+  <script src="/js/auth.js" defer></script>
 </body>
 </html>

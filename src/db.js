@@ -46,11 +46,29 @@ const bootstrap = async () => {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       designer_id UUID NOT NULL REFERENCES designers(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
       image_url TEXT NOT NULL,           -- ej: /img/diseno1.jpg
+      thumbnail_url TEXT,
       published BOOLEAN NOT NULL DEFAULT true,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+
+    // columnas adicionales que pudieron faltar en instalaciones anteriores
+  await pool.query(`
+    ALTER TABLE designs
+      ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+  `);
+  await pool.query(`
+    ALTER TABLE designs
+      ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
+  `);
+  await pool.query(`
+    ALTER TABLE designs
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+  `);
+
 
   // LIKES (PK compuesta)
   await pool.query(`

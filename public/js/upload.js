@@ -1,118 +1,157 @@
-// /public/js/upload.js
-const token = localStorage.getItem("token") || "";
-const api = (p) => p.startsWith("/api") ? p : `/api${p}`;
-const authHeaders = () => token ? { Authorization: `Bearer ${token}` } : {};
-const msg = (id, text, ok = false) => {
-  const el = document.getElementById(id);
-  el.textContent = text || "";
-  el.style.color = ok ? "#047857" : "";
-};
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const api = (p) => (p.startsWith("/api") ? p : `/api${p}`);
 
-async function guardAuth() {
-  const res = await fetch(api("/auth/me"), { headers: { ...authHeaders() } });
-  if (!res.ok) { window.location.href = "/login.html"; return false; }
-  return true;
-}
+  const form = $("#formUpload");
+  const sel = $("#selCategory");
+  const file = $("#file");
+  const preview = $("#preview");
+  const msg = $("#msg");
+  const btn = $("#btnSave");
 
-async function loadMine() {
-  const grid = document.getElementById("my-designs");
-  grid.innerHTML = `<p class="muted">Cargando…</p>`;
-  try {
-    const res = await fetch(api("/designs/mine"), { headers: { ...authHeaders() } });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const items = await res.json();
+  const token = localStorage.getItem("token") || "";
+  const authHeaders = () => (token ? { Authorization: `Bearer ${token}` } : {});
 
-    if (!items.length) { grid.innerHTML = `<p class="muted">Todavía no subiste diseños.</p>`; return; }
-
-    grid.innerHTML = items.map(x => `
-      <article class="card" data-id="${x.id}" style="cursor:pointer">
-        <div class="card-media">
-          <img src="${x.thumbnail_url || x.image_url}" alt="${x.title}" loading="lazy" />
-        </div>
-        <div class="card-body">
-          <h3>${x.title}</h3>
-          ${x.description ? `<p>${x.description}</p>` : ``}
-          <p class="muted">${new Date(x.created_at).toLocaleDateString("es-AR")} · 
-            <i class="fa-solid fa-heart"></i> ${x.likes ?? 0}
-          </p>
-        </div>
-      </article>
-    `).join("");
-
-    grid.querySelectorAll(".card").forEach(card => {
-      card.addEventListener("click", () => {
-        const id = card.dataset.id;
-        location.href = `/design.html?id=${id}`; // siempre por query
-      });
-    });
-
-  } catch (e) {
-    console.error(e);
-    grid.innerHTML = `<p class="muted">No se pudieron cargar tus diseños.</p>`;
+  // ---------- Utils de UI ----------
+  function showMsg(text, type = "muted") {
+    if (!msg) return;
+    msg.className = type;      // "muted" | "error" | "ok"
+    msg.textContent = text || "";
   }
-}
+  function resetPreview() {
+    if (!preview) return;
+    preview.removeAttribute("src");
+    preview.style.display = "none";
+  }
 
-function setupForm() {
-  const form = document.getElementById("form-upload");
-  const inputFile = form.querySelector('input[name="image"]');
-  const inputTitle = form.querySelector('input[name="title"]');
-  const preview = document.getElementById("preview");
-  const previewImg = document.getElementById("preview-img");
+  // ---------- Vista previa (modo seguro con FileReader) ----------
+  const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
+  const MAX_BYTES = 8 * 1024 * 1024; // 8 MB
 
-  inputFile.addEventListener("change", () => {
-    const f = inputFile.files?.[0];
-    if (!f) { preview.style.display = "none"; return; }
+  file?.addEventListener("change", () => {
+    showMsg("", "muted");
 
-    if (!["image/jpeg", "image/png", "image/webp"].includes(f.type)) {
-      msg("msg-upload", "Formato no permitido. Usa JPG, PNG o WEBP."); 
-      preview.style.display = "none";
+    const f = file.files?.[0];
+    if (!f) {
+      resetPreview();
       return;
     }
-    if (f.size > 8 * 1024 * 1024) {
-      msg("msg-upload", "La imagen supera 8 MB.");
-      preview.style.display = "none";
+
+    if (!ALLOWED.includes(f.type)) {
+      showMsg("Formato no permitido. Usá JPG, PNG o WEBP.", "error");
+      file.value = "";
+      resetPreview();
+      return;
+    }
+
+    if (f.size > MAX_BYTES) {
+      showMsg("La imagen supera los 8 MB.", "error");
+      file.value = "";
+      resetPreview();
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = (ev) => { previewImg.src = ev.target.result; preview.style.display = "block"; };
+    reader.onload = (e) => {
+      preview.src = e.target.result;
+      preview.alt = "Vista previa";
+      preview.style.display = "block";
+      // console.log("Vista previa cargada correctamente");
+    };
+    reader.onerror = () => {
+      showMsg("No se pudo generar la vista previa.", "error");
+      resetPreview();
+    };
     reader.readAsDataURL(f);
   });
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    msg("msg-upload", "");
+  // ---------- Categorías ----------
+  async function loadCategories() {
+    try {
+      const res = await fetch(api("/categories"), { headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error("no-ok");
+      const cats = await res.json();
+      fillCats(cats);
+    } catch {
+      // Fallback por si el endpoint no existe aún
+      fillCats([
+        { id: "abstracto", name: "Abstracto" },
+        { id: "tipografia", name: "Tipografía" },
+        { id: "animales", name: "Animales" },
+        { id: "naturaleza", name: "Naturaleza" },
+        { id: "deportes", name: "Deportes" },
+        { id: "gaming", name: "Gaming" },
+        { id: "otros", name: "Otros" },
+      ]);
+    }
+  }
 
-    const title = inputTitle.value.trim();
-    const img = inputFile.files?.[0];
-    if (title.length < 3) { msg("msg-upload", "El título es demasiado corto."); return; }
-    if (!img) { msg("msg-upload", "Seleccioná una imagen."); return; }
+  function fillCats(cats = []) {
+    sel.innerHTML = "";
+    cats.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.id || c.category_id || c.value || c.slug || c.name;
+      opt.textContent = c.name || c.title || String(opt.value);
+      sel.appendChild(opt);
+    });
+  }
+
+  // ---------- Envío ----------
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showMsg("", "muted");
+
+    const f = file?.files?.[0];
+    if (!f) {
+      showMsg("Seleccioná una imagen.", "error");
+      return;
+    }
+    if (!ALLOWED.includes(f.type) || f.size > MAX_BYTES) {
+      showMsg("Imagen inválida. Verificá formato y tamaño (máx. 8 MB).", "error");
+      return;
+    }
 
     const fd = new FormData(form);
+
+    btn.disabled = true;
+    const oldTxt = btn.textContent;
+    btn.textContent = "Guardando…";
+
     try {
       const res = await fetch(api("/designs"), {
         method: "POST",
-        headers: { ...authHeaders() },
-        body: fd
+        headers: { ...authHeaders() }, // no agregamos Content-Type para que el boundary lo maneje el navegador
+        body: fd,
       });
-      const data = await res.json();
-      if (!res.ok) throw data;
 
-      msg("msg-upload", "¡Diseño subido y publicado!", true);
-      form.reset();
-      preview.style.display = "none";
-      await loadMine();
+      if (!res.ok) {
+        const t = await safeText(res);
+        throw new Error(t || `Error ${res.status}`);
+      }
 
+      const data = await safeJSON(res);
+      showMsg("¡Diseño guardado!", "ok");
+
+      if (data && data.id) {
+        setTimeout(() => {
+          location.href = `/design.html?id=${encodeURIComponent(data.id)}`;
+        }, 600);
+      } else {
+        form.reset();
+        resetPreview();
+      }
     } catch (err) {
-      console.error(err);
-      msg("msg-upload", err?.error || "No se pudo subir el diseño");
+      showMsg(err?.message || "No se pudo guardar el diseño.", "error");
+      // console.error(err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = oldTxt;
     }
   });
-}
 
-(async () => {
-  const ok = await guardAuth();
-  if (!ok) return;
-  setupForm();
-  loadMine();
+  function safeJSON(res) { return res.clone().json().catch(() => ({})); }
+  function safeText(res) { return res.clone().text().catch(() => ""); }
+
+  // boot
+  loadCategories();
 })();

@@ -4,6 +4,8 @@ const $ = (s, r=document) => r.querySelector(s);
 const token = localStorage.getItem("token") || "";
 const auth = () => (token ? { Authorization: `Bearer ${token}` } : {});
 
+let CATEGORIES = [];
+
 async function guardAdmin() {
   try {
     const res = await fetch(api("/auth/me"), {
@@ -30,32 +32,87 @@ async function guardAdmin() {
 }
 
 /* ------- Estado de la lista ------- */
-let state = { page: 1, limit: 10, q: "" };
+let state = {
+  page: 1,
+  limit: 10,
+  q: "",
+  category: "",
+  published: "",
+  sort: "newest",
+  from: "",
+  to: ""
+};
 
+/* ------- Controles ------- */
+const el = {
+  rows: $("#rows"),
+  q: $("#q"),
+  btnSearch: $("#btnSearch"),
+  resultInfo: $("#resultInfo"),
+  pageInfo: $("#pageInfo"),
+  prev: $("#prev"),
+  next: $("#next"),
+  fCategory: $("#fCategory"),
+  fPublished: $("#fPublished"),
+  fSort: $("#fSort"),
+  fFrom: $("#fFrom"),
+  fTo: $("#fTo"),
+  fLimit: $("#fLimit"),
+  btnClear: $("#btnClear"),
+};
+
+/* ------- Categorías ------- */
+async function loadCategories() {
+  const res = await fetch(api("/categories"), { cache: "no-store" });
+  CATEGORIES = res.ok ? await res.json() : [];
+  // Filtro
+  if (el.fCategory) {
+    const opts = [`<option value="">Todas</option>`].concat(
+      CATEGORIES.map(c => `<option value="${c.id}">${c.name}</option>`)
+    ).join("");
+    el.fCategory.innerHTML = opts;
+  }
+}
+
+function categoryNameById(id) {
+  return CATEGORIES.find(c => String(c.id) === String(id))?.name || "—";
+}
+
+/* ------- Render ------- */
 async function loadList() {
-  const rows = $("#rows");
-  rows.innerHTML = `<tr><td colspan="6">Cargando…</td></tr>`;
-  const params = new URLSearchParams({ page: state.page, limit: state.limit, q: state.q });
+  el.rows.innerHTML = `<tr><td colspan="7">Cargando…</td></tr>`;
+  const params = new URLSearchParams({
+    page: state.page,
+    limit: state.limit,
+    q: state.q,
+    category: state.category,
+    published: state.published,
+    sort: state.sort,
+    from: state.from,
+    to: state.to
+  });
+
   const res = await fetch(api(`/admin/designs?${params.toString()}`), {
     headers: { ...auth(), "Accept":"application/json" },
     cache: "no-store"
   });
-  if (!res.ok) { rows.innerHTML = `<tr><td colspan="6">Error al cargar</td></tr>`; return; }
+  if (!res.ok) { el.rows.innerHTML = `<tr><td colspan="7">Error al cargar</td></tr>`; return; }
   const data = await res.json();
 
-  $("#resultInfo").textContent = `${data.total} resultado(s)`;
-  $("#pageInfo").textContent = `Página ${data.page} · ${data.items.length}/${state.limit}`;
-  $("#prev").disabled = state.page <= 1;
-  $("#next").disabled = data.page * state.limit >= data.total;
+  el.resultInfo.textContent = `${data.total} resultado(s)`;
+  el.pageInfo.textContent = `Página ${data.page} · ${data.items.length}/${state.limit}`;
+  el.prev.disabled = state.page <= 1;
+  el.next.disabled = data.page * state.limit >= data.total;
 
-  rows.innerHTML = data.items.map(d => `
-    <tr data-id="${d.id}" data-img="${d.image_url}">
+  el.rows.innerHTML = data.items.map(d => `
+    <tr data-id="${d.id}" data-img="${d.image_url}" data-cat="${d.category_id}">
       <td><img class="thumb" src="${d.thumbnail_url || d.image_url}" alt="${d.title}"/></td>
       <td>
         <div><strong>${d.title}</strong></div>
         <div class="muted-sm">${new Date(d.created_at).toLocaleDateString("es-AR")}</div>
       </td>
       <td>${d.designer_name}</td>
+      <td>${d.category_name || categoryNameById(d.category_id)}</td>
       <td>${d.likes}</td>
       <td>
         <label title="${d.published ? 'Publicado' : 'No publicado'}">
@@ -73,7 +130,7 @@ async function loadList() {
   `).join("");
 
   // Actions
-  rows.querySelectorAll("button[data-action]").forEach(btn => {
+  el.rows.querySelectorAll("button[data-action]").forEach(btn => {
     const tr = btn.closest("tr");
     const id = tr.dataset.id;
     const img = tr.dataset.img;
@@ -86,7 +143,7 @@ async function loadList() {
   });
 
   // Toggle publicado
-  rows.querySelectorAll(".pub-toggle").forEach(chk => {
+  el.rows.querySelectorAll(".pub-toggle").forEach(chk => {
     const tr = chk.closest("tr");
     const id = tr.dataset.id;
     chk.addEventListener("change", async () => {
@@ -95,7 +152,7 @@ async function loadList() {
         await patchDesign(id, { published: chk.checked });
       } catch(e){
         console.error(e);
-        chk.checked = !chk.checked; // revertir si falla
+        chk.checked = !chk.checked;
         alert("No se pudo actualizar el estado de publicación.");
       } finally {
         chk.disabled = false;
@@ -104,7 +161,7 @@ async function loadList() {
   });
 }
 
-/* ------- Descarga robusta del original ------- */
+/* ------- Descarga del original ------- */
 async function downloadImage(url, id) {
   try {
     const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
@@ -120,7 +177,6 @@ async function downloadImage(url, id) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1500);
   } catch (e) {
     console.error(e);
-    // fallback: abrir en nueva pestaña
     window.open(url, "_blank");
   }
 }
@@ -141,12 +197,20 @@ async function patchDesign(id, payload) {
 const dlg = $("#modal");
 const form = $("#formEdit");
 const msg = $("#msg");
+const selCat = $("#selCategory");
+
+function fillCategorySelect(selectedId) {
+  selCat.innerHTML = CATEGORIES.map(c =>
+    `<option value="${c.id}" ${String(c.id)===String(selectedId)?'selected':''}>${c.name}</option>`
+  ).join("");
+}
 
 function setForm(design) {
   form.id.value = design.id;
   form.title.value = design.title || "";
   form.description.value = design.description || "";
   form.published.checked = !!design.published;
+  fillCategorySelect(design.category_id || design.cat);
 }
 
 async function openEdit(id, tr) {
@@ -154,7 +218,9 @@ async function openEdit(id, tr) {
     id,
     title: tr.querySelector("strong").textContent,
     description: "",
-    published: tr.querySelector(".pub-toggle").checked
+    published: tr.querySelector(".pub-toggle").checked,
+    category_id: tr.dataset.cat,
+    cat: tr.dataset.cat
   });
   msg.textContent = "";
   dlg.showModal();
@@ -167,7 +233,8 @@ form.addEventListener("submit", async (e) => {
   const payload = {
     title: form.title.value.trim(),
     description: form.description.value.trim(),
-    published: form.published.checked
+    published: form.published.checked,
+    category_id: selCat.value
   };
   try {
     await patchDesign(id, payload);
@@ -189,18 +256,48 @@ async function confirmDel(id, tr) {
 }
 
 /* ------- Búsqueda y paginación ------- */
-$("#btnSearch").addEventListener("click", () => {
-  state.q = $("#q").value.trim();
+el.btnSearch.addEventListener("click", () => {
+  state.q = el.q.value.trim();
   state.page = 1;
   loadList();
 });
-$("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#btnSearch").click(); });
-$("#prev").addEventListener("click", () => { if (state.page > 1) { state.page--; loadList(); } });
-$("#next").addEventListener("click", () => { state.page++; loadList(); });
+el.q.addEventListener("keydown", (e) => { if (e.key === "Enter") el.btnSearch.click(); });
+el.prev.addEventListener("click", () => { if (state.page > 1) { state.page--; loadList(); } });
+el.next.addEventListener("click", () => { state.page++; loadList(); });
+
+/* ------- Filtros ------- */
+function applyFiltersFromUI() {
+  state.category  = el.fCategory.value || "";
+  state.published = el.fPublished.value;     // "", "1", "0"
+  state.sort      = el.fSort.value || "newest";
+  state.from      = el.fFrom.value || "";
+  state.to        = el.fTo.value || "";
+  state.limit     = parseInt(el.fLimit.value || "10", 10);
+  state.page      = 1;
+  loadList();
+}
+
+[el.fCategory, el.fPublished, el.fSort, el.fFrom, el.fTo, el.fLimit]
+  .forEach(ctrl => ctrl && ctrl.addEventListener("change", applyFiltersFromUI));
+
+$("#btnClear")?.addEventListener("click", () => {
+  el.q.value = "";
+  el.fCategory.value = "";
+  el.fPublished.value = "";
+  el.fSort.value = "newest";
+  el.fFrom.value = "";
+  el.fTo.value = "";
+  el.fLimit.value = "10";
+  state = { page: 1, limit: 10, q: "", category:"", published:"", sort:"newest", from:"", to:"" };
+  loadList();
+});
 
 /* ------- Init ------- */
 (async () => {
   const ok = await guardAdmin();
   if (!ok) return;
+  await loadCategories();
+  // set initial UI
+  if (el.fLimit) el.fLimit.value = String(state.limit);
   await loadList();
 })();

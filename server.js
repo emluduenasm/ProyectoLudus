@@ -2,6 +2,10 @@
 import { createServer } from "http";
 import app from "./src/app.js";
 import adminDesignsRoutes from "./src/routes/adminDesignsRoutes.js";
+import categoriesRoutes from "./src/routes/categoriesRoutes.js";
+
+
+app.use("/api/categories", categoriesRoutes);
 
 app.use("/api/admin/designs", adminDesignsRoutes);
 

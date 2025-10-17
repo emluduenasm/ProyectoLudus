@@ -23,9 +23,10 @@
       up.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño`;
       nav.appendChild(up);
 
-      // Hola, nombre
+      // Hola, nombre (más visible)
       const hola = document.createElement("span");
-      hola.className = "ui-slot muted";
+      // CAMBIO ÚNICO: antes "ui-slot muted"
+      hola.className = "ui-slot user-chip";
       hola.style.marginLeft = "0.75rem";
       hola.textContent = `Hola, ${me.username || me.name || me.email}`;
       nav.appendChild(hola);

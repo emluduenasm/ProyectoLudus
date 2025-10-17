@@ -1,93 +1,125 @@
 // /public/js/home.js
-const api = (p) => p.startsWith("/api") ? p : `/api${p}`;
-const qs = (s, r=document) => r.querySelector(s);
+(() => {
+  const api = (p) => (p.startsWith("/api") ? p : `/api${p}`);
+  const $ = (s, r=document) => r.querySelector(s);
 
-/* ------------------ Diseños destacados ------------------ */
-async function loadFeatured(limit = 6) {
-  const grid = qs("#featured-grid");
-  if (!grid) return;
-  grid.innerHTML = `<p class="muted">Cargando…</p>`;
+  // Soporta varias variantes de IDs/clases que fuimos usando
+  const getFeaturedWrap = () =>
+    $("#featured-designs") ||
+    $("#featured-list") ||
+    $(".featured-designs") ||
+    $("#featuredGrid");
 
-  try {
-    const res = await fetch(api(`/designs/featured?limit=${limit}`));
-    const items = await res.json();
-    if (!res.ok) throw items;
+  const getDesignersWrap = () =>
+    $("#featured-designers") ||
+    $("#designers-list") ||
+    $(".featured-designers") ||
+    $("#designersGrid");
 
-    if (!items.length) {
-      grid.innerHTML = `<p class="muted">No hay diseños destacados aún.</p>`;
-      return;
+  const featuredWrap  = getFeaturedWrap();
+  const designersWrap = getDesignersWrap();
+
+  const designCard = (d) => `
+    <a class="card design-card" href="/design.html?id=${d.id}">
+      <div class="thumb">
+        <img src="${d.thumbnail_url || d.image_url}" alt="${d.title}" loading="lazy"/>
+      </div>
+      <div class="body">
+        <h3 class="title">${d.title}</h3>
+        <div class="meta">
+          <span class="muted">${d.designer_name ?? "anónimo"}</span>
+          <span title="Me gusta"><i class="fa-solid fa-heart"></i> ${d.likes ?? 0}</span>
+        </div>
+        ${d.category_name ? `<span class="badge">${d.category_name}</span>` : ""}
+      </div>
+    </a>
+  `;
+
+  const designerCard = (u) => `
+    <a class="card" href="/designers.html#${encodeURIComponent(u.username || u.name || u.id)}">
+      <div class="thumb">
+        <img src="${u.avatar_url || '/img/disenador1.jpg'}" alt="${u.display_name || u.username || 'diseñador'}" loading="lazy"/>
+      </div>
+      <div class="body">
+        <h3 class="title">${u.display_name || u.username || 'Diseñador'}</h3>
+        <div class="meta"><span class="muted">${u.designs_count ?? 0} diseños</span></div>
+      </div>
+    </a>
+  `;
+
+  async function loadFeaturedDesigns() {
+    if (!featuredWrap) return;
+    featuredWrap.innerHTML = `<div class="muted span-all">Cargando…</div>`;
+    try {
+      const res = await fetch(api("/designs/featured?limit=6"), { cache: "no-store" });
+      if (!res.ok) throw 0;
+      const items = await res.json();
+      featuredWrap.innerHTML = items.length
+        ? items.map(designCard).join("")
+        : `<div class="muted span-all">Todavía no hay diseños destacados.</div>`;
+    } catch {
+      featuredWrap.innerHTML = `<div class="muted span-all">No se pudieron cargar los diseños.</div>`;
     }
-
-    grid.innerHTML = items.map(x => `
-      <article class="card" data-id="${x.id}" style="cursor:pointer">
-        <div class="card-media">
-          <img src="${x.thumbnail_url || x.image_url}" alt="${x.title}" loading="lazy" />
-        </div>
-        <div class="card-body">
-          <h3>${x.title}</h3>
-          <p class="muted">${x.designer_name} ·
-            <i class="fa-solid fa-heart"></i> ${x.likes ?? 0}</p>
-        </div>
-      </article>
-    `).join("");
-
-    grid.querySelectorAll(".card").forEach(card => {
-      card.addEventListener("click", () => {
-        const id = card.dataset.id;
-        location.href = `/design.html?id=${id}`;
-      });
-    });
-
-  } catch (err) {
-    console.error(err);
-    grid.innerHTML = `<p class="muted">No se pudieron cargar los destacados.</p>`;
   }
-}
 
-/* ------------------ Diseñadores destacados ------------------ */
-async function loadFeaturedDesigners(limit = 8) {
-  const grid = qs("#designers-grid");
-  if (!grid) return;
-  grid.innerHTML = `<p class="muted">Cargando…</p>`;
-
-  try {
-    const res = await fetch(api(`/designers/featured?limit=${limit}`)); // el SQL ya limita a 12
-    const items = await res.json();
-    if (!res.ok) throw items;
-
-    if (!items.length) {
-      grid.innerHTML = `<p class="muted">Todavía no hay diseñadores destacados.</p>`;
-      return;
+  async function loadFeaturedDesigners() {
+    if (!designersWrap) return;
+    designersWrap.innerHTML = `<div class="muted span-all">Cargando…</div>`;
+    try {
+      const res = await fetch(api("/designers/featured?limit=6"), { cache: "no-store" });
+      if (!res.ok) throw 0;
+      const items = await res.json();
+      designersWrap.innerHTML = items.length
+        ? items.map(designerCard).join("")
+        : `<div class="muted span-all">Sin diseñadores destacados por ahora.</div>`;
+    } catch {
+      designersWrap.innerHTML = "";
     }
-
-    grid.innerHTML = items.slice(0, limit).map(d => `
-      <article class="card designer" data-id="${d.id}" style="cursor:pointer">
-        <div class="card-media avatar">
-          <img src="${d.avatar_url || '/img/disenador1.jpg'}" alt="${d.name}" loading="lazy" />
-        </div>
-        <div class="card-body">
-          <h3>${d.name}</h3>
-          <p class="muted"><i class="fa-solid fa-heart"></i> ${d.likes ?? 0}</p>
-        </div>
-      </article>
-    `).join("");
-
-    // Por ahora, al click te llevo a la página general de diseñadores (o futura ficha)
-    grid.querySelectorAll(".card").forEach(card => {
-      card.addEventListener("click", () => {
-        // Si luego tienes un detalle de diseñador, cambia aquí a /designer.html?id=...
-        location.href = "/disenadores.html";
-      });
-    });
-
-  } catch (err) {
-    console.error(err);
-    grid.innerHTML = `<p class="muted">No se pudieron cargar los diseñadores destacados.</p>`;
   }
-}
 
-/* ------------------ Init ------------------ */
-document.addEventListener("DOMContentLoaded", () => {
-  loadFeatured(6);
-  loadFeaturedDesigners(8);
-});
+  // Blindaje: clic en tarjetas => siempre va a design.html
+  document.addEventListener("click", (ev) => {
+    const a = ev.target.closest("a.design-card");
+    if (!a) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+    location.href = a.href;
+  }, true);
+
+  // Estilos mínimos por si falta grid/target
+  const injectOnce = (id, css) => {
+    if (document.getElementById(id)) return;
+    const s = document.createElement("style");
+    s.id = id; s.textContent = css; document.head.appendChild(s);
+  };
+  injectOnce("home-cards-css", `
+    .cards, #featured-designs, #featured-list, .featured-designs, #featuredGrid,
+            #featured-designers, #designers-list, .featured-designers, #designersGrid {
+      display:grid; gap:14px; grid-template-columns:repeat(6,minmax(0,1fr));
+    }
+    @media (max-width:1100px){.cards, #featured-designs, #featured-list, .featured-designs, #featuredGrid,
+                               #featured-designers, #designers-list, .featured-designers, #designersGrid{
+      grid-template-columns:repeat(4,minmax(0,1fr));
+    }}
+    @media (max-width:720px){.cards, #featured-designs, #featured-list, .featured-designs, #featuredGrid,
+                              #featured-designers, #designers-list, .featured-designers, #designersGrid{
+      grid-template-columns:repeat(2,minmax(0,1fr));
+    }}
+    .card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(2,6,23,.06);display:block}
+    .thumb{aspect-ratio:1/1;background:#f1f5f9;overflow:hidden}
+    .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+    .body{padding:10px}
+    .title{font-size:15px;margin:0 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .meta{display:flex;gap:10px;align-items:center;color:#64748b;font-size:12px}
+    .badge{display:inline-block;margin-top:6px;background:#eef2ff;color:#312e81;border-radius:999px;padding:2px 8px;font-size:11px}
+    .muted{color:#64748b}.span-all{grid-column:1/-1}
+  `);
+
+  function init(){ loadFeaturedDesigns(); loadFeaturedDesigners(); }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init, { once:true });
+  } else {
+    init();
+  }
+})();
