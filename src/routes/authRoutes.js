@@ -80,4 +80,50 @@ router.get("/me", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/auth/check
+ * Query: ?email=...&dni=...&username=...
+ * Responde: { email_taken: boolean, dni_taken: boolean, username_taken: boolean }
+ */
+router.get("/check", async (req, res) => {
+  try {
+    const emailNorm    = (req.query.email || "").trim().toLowerCase();
+    const usernameNorm = (req.query.username || "").trim();
+    const dniClean     = (req.query.dni || "").toString().replace(/\D/g, "");
+
+    const out = { email_taken: false, dni_taken: false, username_taken: false };
+
+    if (emailNorm) {
+      const r = await pool.query(
+        `SELECT 1 FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1`,
+        [emailNorm]
+      );
+      out.email_taken = !!r.rowCount;
+    }
+
+    if (usernameNorm) {
+      const r = await pool.query(
+        `SELECT 1 FROM users WHERE LOWER(username)=LOWER($1) LIMIT 1`,
+        [usernameNorm]
+      );
+      out.username_taken = !!r.rowCount;
+    }
+
+    if (dniClean) {
+      // Tu base ya usa "personas" (según tu controlador). Consultamos ahí.
+      const r = await pool.query(
+        `SELECT 1 FROM personas WHERE dni=$1 LIMIT 1`,
+        [dniClean]
+      );
+      out.dni_taken = !!r.rowCount;
+    }
+
+    res.json(out);
+  } catch (e) {
+    console.error("auth/check", e);
+    res.status(500).json({ error: "No se pudo verificar" });
+  }
+});
+
+
 export default router;

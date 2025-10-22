@@ -200,6 +200,26 @@ if (formRegister) {
     const payload = Object.fromEntries(f.entries());
 
     try {
+          // Pre-chequeo para evitar 409 por duplicados (user-friendly)
+    const pre = await checkUnique({
+      emailVal: email.value.trim().toLowerCase(),
+      dniVal: dni.value.replace(/\D/g, ""),
+      usernameVal: username.value.trim(),
+    });
+
+    if (pre) {
+      let dupMsg = "";
+      if (pre.email_taken)    { setError(email, "Este email ya está registrado."); dupMsg = "Email ya registrado."; }
+      if (pre.dni_taken)      { setError(dni, "Este DNI ya está registrado."); dupMsg = dupMsg || "DNI ya registrado."; }
+      if (pre.username_taken) { setError(username, "Este alias ya está en uso."); dupMsg = dupMsg || "Alias ya en uso."; }
+      if (dupMsg) {
+        msgGlobal.textContent = dupMsg;
+        msgGlobal.className = "error";
+        return; // no enviamos
+      }
+    }
+
+
       const res = await fetch(api("/register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -228,6 +248,63 @@ if (formRegister) {
       }
     }
   });
+
+    // ------- Verificación remota (email/dni/username) con debounce -------
+  const debounce = (fn, ms = 350) => {
+    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  };
+
+  async function checkUnique({ emailVal, dniVal, usernameVal }) {
+    // Armamos la query solo con lo que tenga formato válido para evitar 400s.
+    const params = new URLSearchParams();
+    if (emailVal && isEmail(emailVal)) params.set("email", emailVal);
+    if (dniVal && isDNI(dniVal))       params.set("dni", dniVal);
+    if (usernameVal && isUsername(usernameVal)) params.set("username", usernameVal);
+
+    if ([...params.keys()].length === 0) return null; // nada para verificar
+
+    try {
+      const res = await fetch(api(`/check?${params.toString()}`), { cache: "no-store" });
+      if (!res.ok) return null;
+      return await res.json(); // { email_taken, dni_taken, username_taken }
+    } catch {
+      return null;
+    }
+  }
+
+  const liveUniqueCheck = debounce(async () => {
+    const emailVal    = email.value.trim().toLowerCase();
+    const dniVal      = dni.value.replace(/\D/g, "");
+    const usernameVal = username.value.trim();
+
+    const result = await checkUnique({ emailVal, dniVal, usernameVal });
+    if (!result) return;
+
+    // Respetamos primero las validaciones de formato: solo mostramos "tomado" si el formato es válido.
+    if (isEmail(emailVal) && result.email_taken) {
+      setError(email, "Este email ya está registrado.");
+    } else if (isEmail(emailVal)) {
+      setOK(email);
+    }
+
+    if (isDNI(dniVal) && result.dni_taken) {
+      setError(dni, "Este DNI ya está registrado.");
+    } else if (isDNI(dniVal)) {
+      setOK(dni);
+    }
+
+    if (isUsername(usernameVal) && result.username_taken) {
+      setError(username, "Este alias ya está en uso.");
+    } else if (isUsername(usernameVal)) {
+      setOK(username);
+    }
+  }, 400);
+
+  // Disparamos la verificación remota solamente cuando el valor tiene formato válido
+  email.addEventListener("input", () => { v.email() && liveUniqueCheck(); });
+  dni.addEventListener("input",   () => { v.dni()   && liveUniqueCheck(); });
+  username.addEventListener("input", () => { v.username() && liveUniqueCheck(); });
+
 }
 
 /* ==========================

@@ -15,6 +15,12 @@
   /* alturas consistentes del navbar */
   --nav-h-mobile: 60px;
   --nav-h-desktop: 72px;
+
+  /* NUEVO: colores de validación */
+  --ok: #16a34a;        /* verde */
+  --error: #dc2626;     /* rojo */
+  --error-ring: rgba(220, 38, 38, .15);
+  --ok-ring: rgba(22, 163, 74, .14);
 }
 
 /* Reset mínimo */
@@ -99,7 +105,7 @@ body {
 }
 .menu .btn.btn-primary:hover { background: #eef6ff; }
 
-/* >>> NUEVO: chip visible para "Hola, nombre" <<< */
+/* >>> chip visible para "Hola, nombre" <<< */
 .menu .user-chip{
   color:#fff;
   opacity: .98;
@@ -293,3 +299,89 @@ select:focus {
 .link { color: var(--brand); }
 .link:hover { color: var(--brand-strong); }
 .span-all { grid-column: 1 / -1; }
+
+.hero{
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  align-items: center;
+  gap: clamp(16px, 4vw, 40px);
+  padding-block: clamp(24px, 6vw, 72px);
+}
+
+/* capas: texto e imagen por encima */
+.hero-text,
+.hero-illustration{ position: relative; z-index: 2; }
+
+/* fondo decorativo atrás */
+.hero-bg{
+  position: absolute;
+  z-index: 1;            /* detrás de texto/imagen */
+  right: 0;
+  top: 0;
+  width: min(42%, 520px);
+  height: 100%;
+  pointer-events: none;
+  background:
+    radial-gradient(#d7e6f7 1px, transparent 1px) 0 0/18px 18px,
+    linear-gradient(180deg, rgba(13,62,117,.04), rgba(13,62,117,0));
+  border-top-left-radius: 24px;
+}
+
+/* móvil */
+@media (max-width: 900px){
+  .hero{
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .hero-bg{
+    width: 100%;
+    opacity: .6;
+    border-top-left-radius: 0;
+  }
+}
+
+/* ===== Terms box ===== */
+.terms-card{
+  background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+  padding:clamp(12px,2vw,16px); box-shadow:0 1px 2px rgba(0,0,0,.04);
+}
+.terms-title{ margin:0 0 .5rem 0; font-size:1.1rem; color:#334155; display:flex; gap:.5rem; align-items:center; }
+.terms-box{
+  max-height:240px; overflow:auto; padding:12px; border:1px solid #e5e7eb; border-radius:10px;
+  background:#f9fafb; line-height:1.55; margin:.5rem 0 0.75rem;
+}
+.terms-box h3{ font-size:1rem; margin:.75rem 0 .25rem; color:#334155; }
+.terms-box p, .terms-box ul{ margin:.4rem 0; }
+.terms-box ul{ padding-left:1.1rem; }
+.terms-accept{ display:flex; gap:.5rem; align-items:flex-start; font-size:.95rem; }
+.terms-accept input{ margin-top:.2rem; }
+
+/* =========================
+   VALIDACIÓN (NUEVO)
+   ========================= */
+/* Mensaje que inyecta auth.js debajo de cada input */
+.input-msg{
+  display:block;
+  margin-top:4px;
+  font-size:12px;
+  line-height:1.3;
+}
+.input-msg.error{ color: var(--error); }
+.input-msg.ok{ color: var(--ok); }
+
+/* Estado visual del input */
+.is-invalid{
+  border-color: var(--error) !important;
+  box-shadow: 0 0 0 3px var(--error-ring) !important;
+}
+.is-valid{
+  border-color: var(--ok) !important;
+  box-shadow: 0 0 0 3px var(--ok-ring) !important;
+}
+
+/* Mensajes globales (ej: #msg-register / #msg-login) */
+#msg-register.error,
+#msg-login.error{ color: var(--error); }
+#msg-register.ok,
+#msg-login.ok{ color: var(--ok); }

@@ -122,7 +122,7 @@ async function loadList() {
       <td class="right">
         <div class="actions">
           <button class="btn" data-action="edit"><i class="fa-solid fa-pen"></i> Editar</button>
-          <button class="btn" data-action="download"><i class="fa-solid fa-download"></i> Descargar diseño</button>
+          <!-- Botón de descarga removido para ADMIN -->
           <button class="btn btn-danger" data-action="del"><i class="fa-solid fa-trash"></i> Eliminar</button>
         </div>
       </td>
@@ -133,11 +133,10 @@ async function loadList() {
   el.rows.querySelectorAll("button[data-action]").forEach(btn => {
     const tr = btn.closest("tr");
     const id = tr.dataset.id;
-    const img = tr.dataset.img;
     btn.addEventListener("click", () => {
       const action = btn.dataset.action;
       if (action === "edit") openEdit(id, tr);
-      if (action === "download") downloadImage(img, id);
+      // if (action === "download") ...  <- eliminado
       if (action === "del") confirmDel(id, tr);
     });
   });
@@ -159,26 +158,6 @@ async function loadList() {
       }
     });
   });
-}
-
-/* ------- Descarga del original ------- */
-async function downloadImage(url, id) {
-  try {
-    const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const blob = await res.blob();
-    const a = document.createElement("a");
-    const ext = (url.split(".").pop() || "jpg").split("?")[0];
-    a.href = URL.createObjectURL(blob);
-    a.download = `design-${id}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
-  } catch (e) {
-    console.error(e);
-    window.open(url, "_blank");
-  }
 }
 
 /* ------- PATCH helper ------- */

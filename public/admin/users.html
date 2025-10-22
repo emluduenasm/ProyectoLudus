@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin · Usuarios</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="/styles.css"/>
+  <style>
+    .admin-wrap{max-width:1100px;margin:2rem auto;padding:1rem}
+    .toolbar{display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem}
+    .toolbar input{flex:1}
+    .filters{
+      display:grid;
+      grid-template-columns: 1fr 180px 160px 120px;
+      gap:.5rem;
+      align-items: end;
+      margin: .5rem 0 1rem;
+    }
+    .filters .form-group label{font-size:.82rem;color:#64748b;margin-bottom:.25rem;display:block}
+    table{width:100%;border-collapse:separate;border-spacing:0 .5rem}
+    td,th{padding:.6rem .8rem;background:#fff}
+    th{color:#334155;text-align:left}
+    td:first-child,th:first-child{border-top-left-radius:10px;border-bottom-left-radius:10px}
+    td:last-child,th:last-child{border-top-right-radius:10px;border-bottom-right-radius:10px}
+    .muted-sm{color:#64748b;font-size:.85rem}
+    .pagination{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem}
+    .pagination button{min-width:2.25rem}
+    .right{text-align:right}
+    .role-pill{padding:.2rem .6rem;border-radius:999px;font-size:.75rem;background:#e2e8f0;color:#1e293b}
+    .btn-danger{background:#dc2626;color:#fff}
+    .btn-danger:hover{filter:brightness(.95)}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="container nav">
+    <a class="brand" href="/"><img src="/img/logo.png" alt="Logo"/></a>
+    <nav class="menu">
+      <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
+      <a href="/admin/designs.html"><i class="fa-solid fa-palette"></i> Diseños</a>
+    </nav>
+  </div>
+</header>
+
+<main class="admin-wrap">
+  <h1>Panel admin · Usuarios</h1>
+
+  <!-- Buscador rápido -->
+  <div class="toolbar">
+    <input id="q" type="search" class="input" placeholder="Buscar por email, alias, nombre o DNI…"/>
+    <button id="btnSearch" class="btn"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
+    <span id="resultInfo" class="muted-sm"></span>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="filters">
+    <div class="form-group">
+      <label for="fRole">Rol</label>
+      <select id="fRole" class="input">
+        <option value="">Todos</option>
+        <option value="admin">Admin</option>
+        <option value="designer">Diseñador</option>
+        <option value="buyer">Comprador</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="fSort">Ordenar por</label>
+      <select id="fSort" class="input">
+        <option value="newest">Más nuevos</option>
+        <option value="oldest">Más antiguos</option>
+        <option value="name_asc">Nombre A–Z</option>
+        <option value="name_desc">Nombre Z–A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="fLimit">Por página</label>
+      <select id="fLimit" class="input">
+        <option>10</option>
+        <option>20</option>
+        <option>30</option>
+        <option>50</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button id="btnClear" class="btn btn-outline"><i class="fa-solid fa-eraser"></i> Limpiar</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Alias</th>
+          <th>Email</th>
+          <th>DNI</th>
+          <th>Rol</th>
+          <th>Alta</th>
+          <th class="right">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="pagination">
+    <button id="prev" class="btn">←</button>
+    <span id="pageInfo" class="muted-sm"></span>
+    <button id="next" class="btn">→</button>
+  </div>
+
+  <!-- Modal: Editar -->
+  <dialog id="modal">
+    <form id="formEdit" method="dialog" class="card" style="padding:1rem;min-width:min(520px,95vw)">
+      <h3>Editar usuario</h3>
+      <input type="hidden" name="id"/>
+      <div class="grid-2">
+        <label>Alias (username)
+          <input class="input" name="username" minlength="3" maxlength="30" required/>
+        </label>
+        <label>Rol
+          <select class="input" name="role" required>
+            <option value="buyer">Comprador</option>
+            <option value="designer">Diseñador</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+      </div>
+      <div id="msg" class="muted-sm" style="margin-top:.5rem"></div>
+      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+        <button type="button" id="btnClose" class="btn">Cancelar</button>
+        <button class="btn-primary">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+    <p><a class="link" href="#contacto">Contacto</a></p>
+  </div>
+</footer>
+
+<script src="/js/auth-ui.js" defer></script>
+<script src="/js/admin-users.js" defer></script>
+</body>
+</html>

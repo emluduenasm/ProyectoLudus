@@ -111,4 +111,14 @@
   } else {
     boot();
   }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const chk = document.querySelector('#accept_terms');
+    const submit = document.querySelector('#registerForm button[type="submit"]');
+    if (chk && submit) {
+      submit.disabled = !chk.checked;
+      chk.addEventListener('change', () => submit.disabled = !chk.checked);
+    }
+  });
+
 })();
