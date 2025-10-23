@@ -59,6 +59,10 @@ const el = {
   fTo: $("#fTo"),
   fLimit: $("#fLimit"),
   btnClear: $("#btnClear"),
+  reviewSection: $("#reviewSection"),
+  reviewList: $("#reviewList"),
+  reviewEmpty: $("#reviewEmpty"),
+  reviewCount: $("#reviewCount"),
 };
 
 /* ------- Categorías ------- */
@@ -76,6 +80,73 @@ async function loadCategories() {
 
 function categoryNameById(id) {
   return CATEGORIES.find(c => String(c.id) === String(id))?.name || "—";
+}
+
+/* ------- En revisión ------- */
+async function loadReviewQueue() {
+  if (!el.reviewSection) return;
+  try {
+    const params = new URLSearchParams({
+      page: 1,
+      limit: 50,
+      published: "0",
+      sort: "newest",
+    });
+    const res = await fetch(api(`/admin/designs?${params.toString()}`), {
+      headers: { ...auth(), Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("No se pudo cargar la revisión");
+    const data = await res.json();
+    renderReviewQueue(data.items || []);
+  } catch (e) {
+    console.error(e);
+    el.reviewSection.style.display = "block";
+    el.reviewList.innerHTML = `<p class="muted-sm">No se pudo cargar la bandeja de revisión.</p>`;
+    el.reviewEmpty.style.display = "none";
+    if (el.reviewCount) el.reviewCount.textContent = "";
+  }
+}
+
+function renderReviewQueue(items) {
+  if (!el.reviewSection) return;
+  const hasItems = items.length > 0;
+  el.reviewSection.style.display = "block";
+  if (el.reviewCount) el.reviewCount.textContent = hasItems ? `${items.length} pendiente(s)` : "";
+  el.reviewEmpty.style.display = hasItems ? "none" : "block";
+  if (!hasItems) {
+    el.reviewList.innerHTML = "";
+    return;
+  }
+  el.reviewList.innerHTML = items.map(d => `
+    <article class="review-card" data-id="${d.id}">
+      <img class="thumb" src="${d.thumbnail_url || d.image_url}" alt="${d.title}"/>
+      <div>
+        <h3>${d.title}</h3>
+        <div class="review-meta">
+          ${new Date(d.created_at).toLocaleDateString("es-AR")} · ${(d.category_name || categoryNameById(d.category_id))}
+          · Likes: ${d.likes ?? 0}
+        </div>
+        ${d.designer_name ? `<div class="review-meta" style="margin-top:.2rem">Diseñador: ${d.designer_name}</div>` : ""}
+        ${d.description ? `<p class="muted-sm" style="margin-top:.4rem">${d.description}</p>` : ""}
+      </div>
+      <div class="review-actions">
+        <button class="btn btn-success" data-action="publish"><i class="fa-solid fa-circle-check"></i> Publicar</button>
+        <button class="btn btn-danger" data-action="reject"><i class="fa-solid fa-xmark"></i> Rechazar</button>
+      </div>
+    </article>
+  `).join("");
+
+  el.reviewList.querySelectorAll("button[data-action]").forEach(btn => {
+    const card = btn.closest(".review-card");
+    const id = card?.dataset?.id;
+    if (!id) return;
+    btn.addEventListener("click", async () => {
+      const action = btn.dataset.action;
+      if (action === "publish") await publishDesign(id, btn);
+      if (action === "reject") await rejectDesign(id);
+    });
+  });
 }
 
 /* ------- Render ------- */
@@ -96,7 +167,7 @@ async function loadList() {
     headers: { ...auth(), "Accept":"application/json" },
     cache: "no-store"
   });
-  if (!res.ok) { el.rows.innerHTML = `<tr><td colspan="7">Error al cargar</td></tr>`; return; }
+  if (!res.ok) { el.rows.innerHTML = `<tr><td colspan="7">Error al cargar</td></tr>`; await loadReviewQueue(); return; }
   const data = await res.json();
 
   el.resultInfo.textContent = `${data.total} resultado(s)`;
@@ -111,9 +182,18 @@ async function loadList() {
         <div><strong>${d.title}</strong></div>
         <div class="muted-sm">${new Date(d.created_at).toLocaleDateString("es-AR")}</div>
       </td>
-      <td>${d.designer_name}</td>
+      <td>
+        <div><strong>${d.designer_username || d.designer_name || "—"}</strong></div>
+        ${d.designer_banned ? `<div><span class="designer-badge-banned">Baneado</span></div>` : ""}
+        ${(d.designer_full_name || d.designer_dni)
+          ? `<div class="muted-sm">${[
+              d.designer_full_name || "",
+              d.designer_dni ? `DNI ${d.designer_dni}` : ""
+            ].filter(Boolean).join(" · ")}</div>`
+          : ""}
+      </td>
       <td>${d.category_name || categoryNameById(d.category_id)}</td>
-      <td>${d.likes}</td>
+      <td>${d.likes ?? 0}</td>
       <td>
         <label title="${d.published ? 'Publicado' : 'No publicado'}">
           <input type="checkbox" class="switch pub-toggle" ${d.published ? "checked":""}/>
@@ -149,6 +229,7 @@ async function loadList() {
       chk.disabled = true;
       try {
         await patchDesign(id, { published: chk.checked });
+        await loadList();
       } catch(e){
         console.error(e);
         chk.checked = !chk.checked;
@@ -158,6 +239,8 @@ async function loadList() {
       }
     });
   });
+
+  await loadReviewQueue();
 }
 
 /* ------- PATCH helper ------- */
@@ -168,8 +251,37 @@ async function patchDesign(id, payload) {
     body: JSON.stringify(payload),
     cache: "no-store"
   });
-  if (!res.ok) throw new Error("PATCH failed");
-  return await res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || "No se pudo actualizar");
+  return data;
+}
+
+async function publishDesign(id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    await patchDesign(id, { published: true });
+    await loadList();
+  } catch (e) {
+    alert(e.message || "No se pudo publicar el diseño.");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function rejectDesign(id) {
+  if (!confirm("¿Rechazar este diseño? Se eliminará definitivamente.")) return;
+  try {
+    const res = await fetch(api(`/admin/designs/${id}`), {
+      method: "DELETE",
+      headers: { ...auth() },
+      cache: "no-store"
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "No se pudo rechazar");
+    await loadList();
+  } catch (e) {
+    alert(e.message || "No se pudo rechazar el diseño.");
+  }
 }
 
 /* ------- Modal Edit ------- */
@@ -230,8 +342,9 @@ $("#btnClose").addEventListener("click", () => dlg.close());
 async function confirmDel(id, tr) {
   if (!confirm("¿Eliminar este diseño? Se borrarán también sus likes y archivos.")) return;
   const res = await fetch(api(`/admin/designs/${id}`), { method: "DELETE", headers: { ...auth() }, cache: "no-store" });
-  if (!res.ok) { alert("No se pudo eliminar"); return; }
-  tr.remove();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(data?.error || "No se pudo eliminar"); return; }
+  await loadList();
 }
 
 /* ------- Búsqueda y paginación ------- */

@@ -410,3 +410,19 @@ select:focus {
   background:var(--brand); color:#fff; border-color:var(--brand);
 }
 .admin-subnav .tab i{ opacity:.9; }
+
+/* agrega esto junto a tus estilos de inputs */
+.input,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+select {
+  width: 100%;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: .55rem .75rem;
+  font-size: 15px;
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}

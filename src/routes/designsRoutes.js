@@ -44,14 +44,21 @@ async function ensureDesignerId(userId) {
   return ins.rows[0].id;
 }
 
-async function resolveCategoryId(category_id) {
+async function resolveCategoryId(category_id, { strict = false } = {}) {
   // Si viene un UUID válido y existe/activa, úsalo; si no, usar “otros”
   if (category_id) {
     const r = await pool.query(`SELECT id FROM categories WHERE id=$1 AND active=TRUE`, [category_id]);
     if (r.rowCount) return r.rows[0].id;
   }
+  if (strict) return null;
   const otros = await pool.query(`SELECT id FROM categories WHERE slug='otros'`);
   return otros.rows[0]?.id;
+}
+
+async function removeFileIfExists(filePathAbs) {
+  try {
+    await fs.promises.unlink(filePathAbs);
+  } catch {}
 }
 
 /* ---------- Endpoints públicos ---------- */
@@ -109,7 +116,7 @@ router.get("/mine", requireAuth, async (req, res) => {
   }
 });
 
-// Crear diseño (publicado automáticamente + genera miniatura + categoría obligatoria/por defecto)
+// Crear diseño (queda pendiente hasta que un admin lo publique)
 router.post("/", requireAuth, upload.single("image"), async (req, res) => {
   try {
     const { title, description, category_id: bodyCat } = req.body;
@@ -132,14 +139,111 @@ router.post("/", requireAuth, upload.single("image"), async (req, res) => {
 
     const ins = await pool.query(
       `INSERT INTO designs (designer_id, title, description, image_url, thumbnail_url, published, category_id)
-       VALUES ($1,$2,$3,$4,$5, true, $6)
+       VALUES ($1,$2,$3,$4,$5, FALSE, $6)
        RETURNING id, title, description, image_url, thumbnail_url, published, category_id, created_at`,
       [designerId, title.trim(), (description || "").trim(), imageUrl, thumbUrl, category_id]
     );
-    res.status(201).json(ins.rows[0]);
+    res.status(201).json({
+      ...ins.rows[0],
+      message: "Diseño recibido. Quedó en revisión del equipo antes de publicarse."
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "No se pudo crear el diseño" });
+  }
+});
+
+// Actualizar diseño propio (solo datos básicos)
+router.patch("/:id", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { title, description, category_id } = req.body ?? {};
+
+    if (
+      typeof title === "undefined" &&
+      typeof description === "undefined" &&
+      typeof category_id === "undefined"
+    ) {
+      return res.status(400).json({ error: "Sin cambios" });
+    }
+
+    const belongs = await pool.query(
+      `SELECT d.id
+       FROM designs d
+       JOIN designers g ON g.id = d.designer_id
+       WHERE d.id = $1 AND g.user_id = $2`,
+      [id, userId]
+    );
+    if (!belongs.rowCount) return res.status(404).json({ error: "Diseño no encontrado" });
+
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (typeof title === "string") {
+      const clean = title.trim();
+      if (clean.length < 3) return res.status(400).json({ error: "Título muy corto" });
+      fields.push(`title = $${idx++}`);
+      values.push(clean);
+    }
+    if (typeof description === "string") {
+      fields.push(`description = $${idx++}`);
+      values.push(description.trim());
+    }
+    if (typeof category_id !== "undefined") {
+      const cat = await resolveCategoryId(category_id, { strict: true });
+      if (!cat) return res.status(400).json({ error: "Categoría inválida" });
+      fields.push(`category_id = $${idx++}`);
+      values.push(cat);
+    }
+
+    if (!fields.length) return res.status(400).json({ error: "Sin cambios" });
+
+    values.push(id);
+    const updated = await pool.query(
+      `UPDATE designs
+         SET ${fields.join(", ")}
+       WHERE id = $${idx}
+       RETURNING id, title, description, category_id, published, image_url, thumbnail_url, created_at`,
+      values
+    );
+
+    res.json(updated.rows[0]);
+  } catch (e) {
+    console.error("PATCH /designs/:id", e);
+    res.status(500).json({ error: "No se pudo actualizar el diseño" });
+  }
+});
+
+// Eliminar diseño propio
+router.delete("/:id", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const find = await pool.query(
+      `SELECT d.image_url, d.thumbnail_url
+       FROM designs d
+       JOIN designers g ON g.id = d.designer_id
+       WHERE d.id = $1 AND g.user_id = $2`,
+      [id, userId]
+    );
+    if (!find.rowCount) return res.status(404).json({ error: "Diseño no encontrado" });
+
+    await pool.query(`DELETE FROM design_likes WHERE design_id=$1`, [id]);
+    await pool.query(`DELETE FROM designs WHERE id=$1`, [id]);
+
+    for (const url of [find.rows[0].image_url, find.rows[0].thumbnail_url]) {
+      if (!url) continue;
+      const abs = path.join(process.cwd(), "public", url);
+      await removeFileIfExists(abs);
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE /designs/:id", e);
+    res.status(500).json({ error: "No se pudo eliminar el diseño" });
   }
 });
 

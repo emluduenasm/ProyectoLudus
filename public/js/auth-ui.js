@@ -26,6 +26,12 @@
       // Si hubiese enlaces estáticos a /upload.html en la página, los removemos:
       document.querySelectorAll('a[href="/upload.html"]').forEach(a => a.remove());
     } else {
+      const mine = document.createElement("a");
+      mine.href = "/user-designs.html";
+      mine.className = "btn ui-slot";
+      mine.innerHTML = `<i class="fa-solid fa-rectangle-list"></i> Mis diseños`;
+      nav.appendChild(mine);
+
       // Botón "Subir diseño" (solo NO-admin)
       const up = document.createElement("a");
       up.href = "/upload.html";

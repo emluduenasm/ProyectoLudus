@@ -76,7 +76,12 @@
 <main class="upload-wrap">
   <section class="upload-card">
     <h1 class="upload-title"><i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño</h1>
+    <nav class="admin-subnav" style="margin-bottom:1rem">
+      <a href="/user-designs.html" class="tab"><i class="fa-solid fa-rectangle-list"></i> Mis diseños</a>
+      <a href="/upload.html" class="tab"><i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño</a>
+    </nav>
     <p class="muted">Formatos permitidos: JPG, PNG o WEBP. Tamaño máximo: 8 MB.</p>
+    <p class="muted" style="margin-top:4px">Una vez enviado, tu diseño quedará en revisión y un administrador lo publicará cuando lo apruebe.</p>
 
     <form id="formUpload" class="form-grid" novalidate>
       <div class="span-2">
@@ -125,5 +130,14 @@
 
 <script src="/js/auth-ui.js" defer></script>
 <script src="/js/upload.js" defer></script>
+<script>
+  (function(){
+    const here = location.pathname.replace(/\/+$/, "");
+    document.querySelectorAll(".admin-subnav .tab").forEach(a => {
+      const href = a.getAttribute("href").replace(/\/+$/, "");
+      if (href === here) a.classList.add("active");
+    });
+  })();
+</script>
 </body>
 </html>

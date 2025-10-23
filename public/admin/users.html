@@ -31,6 +31,11 @@
     .btn-danger{background:#dc2626;color:#fff}
     .btn-danger:hover{filter:brightness(.95)}
     .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+    dialog .input { width: 100%; }
+    dialog label { display:block; }
+    .designs-published{color:#16a34a;font-weight:600}
+    .designs-unpublished{color:#dc2626;font-weight:600}
+
   </style>
 </head>
 <body>
@@ -119,29 +124,52 @@
   </div>
 
   <!-- Modal: Editar -->
-  <dialog id="modal">
-    <form id="formEdit" method="dialog" class="card" style="padding:1rem;min-width:min(520px,95vw)">
-      <h3>Editar usuario</h3>
-      <input type="hidden" name="id"/>
-      <div class="grid-2">
-        <label>Alias (username)
-          <input class="input" name="username" minlength="3" maxlength="30" required/>
-        </label>
-        <label>Rol
-          <select class="input" name="role" required>
-            <option value="buyer">Comprador</option>
-            <option value="designer">Diseñador</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
-      </div>
-      <div id="msg" class="muted-sm" style="margin-top:.5rem"></div>
-      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
-        <button type="button" id="btnClose" class="btn">Cancelar</button>
-        <button class="btn-primary">Guardar</button>
-      </div>
-    </form>
-  </dialog>
+<dialog id="modal">
+  <form id="formEdit" method="dialog" class="card" style="padding:1rem;min-width:min(620px,95vw)">
+    <h3>Editar usuario</h3>
+    <input type="hidden" name="id"/>
+
+    <div class="grid-2">
+      <label>Nombre
+        <input class="input" type="text" name="first_name" minlength="2" maxlength="80" />
+      </label>
+      <label>Apellido
+        <input class="input" type="text" name="last_name" minlength="2" maxlength="80" />
+      </label>
+    </div>
+
+    <div class="grid-2">
+      <label>DNI
+        <input class="input" type="text" name="dni" inputmode="numeric" maxlength="8" />
+      </label>
+      <label>Email
+        <input class="input" type="email" name="email" />
+      </label>
+    </div>
+
+    <div class="grid-2">
+      <label>Alias (username)
+        <input class="input" type="text" name="username" minlength="3" maxlength="30" />
+      </label>
+      <label>Rol
+        <select class="input" name="role" required>
+          <option value="buyer">Comprador</option>
+          <option value="designer">Diseñador</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="msg" class="muted-sm" style="margin-top:.5rem"></div>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+      <button type="button" id="btnClose" class="btn">Cancelar</button>
+      <button class="btn-primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+
+
 </main>
 
 <footer class="site-footer">

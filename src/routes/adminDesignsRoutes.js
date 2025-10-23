@@ -79,7 +79,7 @@ router.get("/", ...onlyAdmin, async (req, res) => {
 
     // Total
     const countQ = await pool.query(
-      `SELECT COUNT(*)::int AS total
+       `SELECT COUNT(*)::int AS total
        FROM designs d
        JOIN designers g ON g.id = d.designer_id
        JOIN users u ON u.id = g.user_id
@@ -100,10 +100,17 @@ router.get("/", ...onlyAdmin, async (req, res) => {
       `WITH base AS (
          SELECT d.id, d.title, d.description, d.published, d.created_at,
                 d.image_url, d.thumbnail_url, d.category_id,
-                COALESCE(u.username, u.name, 'Anónimo') AS designer_name
+                COALESCE(u.username, u.name, 'Anónimo') AS designer_name,
+                u.username AS designer_username,
+                u.banned  AS designer_banned,
+                p.dni     AS designer_dni,
+                NULLIF(TRIM(CONCAT(COALESCE(p.first_name,''),
+                                   CASE WHEN p.first_name IS NOT NULL AND p.last_name IS NOT NULL THEN ' ' ELSE '' END,
+                                   COALESCE(p.last_name,''))), '') AS designer_full_name
          FROM designs d
          JOIN designers g ON g.id = d.designer_id
          JOIN users u ON u.id = g.user_id
+         LEFT JOIN personas p ON p.id = u.persona_id
          ${whereSql}
        ),
        likes AS (

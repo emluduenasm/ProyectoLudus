@@ -4,6 +4,9 @@ const $ = (s, r=document) => r.querySelector(s);
 const token = localStorage.getItem("token") || "";
 const auth = () => (token ? { Authorization: `Bearer ${token}` } : {});
 
+// helper para poner valores en data-* sin romper atributos
+const escAttr = (s) => String(s ?? "").replace(/"/g, '&quot;');
+
 async function guardAdmin() {
   try {
     const res = await fetch(api("/auth/me"), {
@@ -71,14 +74,25 @@ async function loadList() {
   el.next.disabled = data.page * state.limit >= data.total;
 
   el.rows.innerHTML = data.items.map(u => `
-    <tr data-id="${u.id}" data-banned="${u.banned ? '1':'0'}">
+    <tr
+      data-id="${u.id}"
+      data-banned="${u.banned ? '1':'0'}"
+      data-first="${escAttr(u.first_name)}"
+      data-last="${escAttr(u.last_name)}"
+      data-dni="${escAttr(u.persona_dni)}"
+      data-email="${escAttr(u.email)}"
+      data-username="${escAttr(u.username)}"
+      data-role="${escAttr(u.role)}"
+    >
       <td>
         <div><strong>${u.full_name || "—"}</strong> ${u.banned ? '<span class="role-pill" style="background:#fee2e2;color:#991b1b;margin-left:.4rem">Baneado</span>' : ''}</div>
         <div class="muted-sm">${u.persona_dni ? "DNI " + u.persona_dni : ""}</div>
       </td>
       <td>${u.username || "—"}</td>
       <td>${u.email}</td>
-      <td>${u.designs_published ?? 0}</td>
+      <td>
+        <span class="designs-published">${u.designs_published ?? 0}</span>/<span class="designs-unpublished">${u.designs_unpublished ?? 0}</span>
+      </td>
       <td><span class="role-pill">${u.role}</span></td>
       <td>${new Date(u.created_at).toLocaleDateString("es-AR")}</td>
       <td class="right">
@@ -133,13 +147,14 @@ async function confirmUnban(id) {
       body: JSON.stringify({}),
       cache: "no-store"
     });
-    const data = await res.json().catch(()=> ({}));
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "No se pudo desbanear");
     await loadList();
   } catch (e) {
     alert(e.message || "No se pudo desbanear");
   }
 }
+
 
 /* ------- PATCH helper (editar) ------- */
 async function patchUser(id, payload) {
@@ -172,8 +187,22 @@ const dlg = $("#modal");
 const form = $("#formEdit");
 const msg = $("#msg");
 
+// si querés forzar solo números en el DNI del modal
+const dniInput = form?.querySelector?.('input[name="dni"]');
+if (dniInput) {
+  dniInput.addEventListener("input", () => {
+    dniInput.value = dniInput.value.replace(/\D/g, "").slice(0, 10);
+  });
+}
+
 function setForm(user) {
   form.id.value = user.id;
+  // nuevos campos
+  if (form.first_name) form.first_name.value = user.first_name || "";
+  if (form.last_name)  form.last_name.value  = user.last_name  || "";
+  if (form.dni)        form.dni.value        = user.dni        || "";
+  if (form.email)      form.email.value      = user.email      || "";
+  // existentes
   form.username.value = user.username || "";
   form.role.value = user.role || "buyer";
 }
@@ -181,8 +210,12 @@ function setForm(user) {
 async function openEdit(id, tr) {
   setForm({
     id,
-    username: tr.children[1].textContent.trim(),
-    role: tr.children[4].innerText.trim(),
+    first_name: tr.dataset.first || "",
+    last_name:  tr.dataset.last  || "",
+    dni:        tr.dataset.dni   || "",
+    email:      tr.dataset.email || "",
+    username:   tr.dataset.username || tr.children[1].textContent.trim(),
+    role:       tr.dataset.role || tr.children[4].innerText.trim(),
   });
   msg.textContent = "";
   dlg.showModal();
@@ -193,6 +226,12 @@ form.addEventListener("submit", async (e) => {
   msg.textContent = "";
   const id = form.id.value;
   const payload = {
+    // nuevos campos
+    first_name: form.first_name ? form.first_name.value.trim() : undefined,
+    last_name:  form.last_name  ? form.last_name.value.trim()  : undefined,
+    dni:        form.dni        ? form.dni.value.replace(/\D/g,"") : undefined,
+    email:      form.email      ? form.email.value.trim()      : undefined,
+    // existentes
     username: form.username.value.trim(),
     role: form.role.value,
   };

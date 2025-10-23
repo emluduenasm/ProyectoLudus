@@ -130,16 +130,10 @@
       }
 
       const data = await safeJSON(res);
-      showMsg("¡Diseño guardado!", "ok");
-
-      if (data && data.id) {
-        setTimeout(() => {
-          location.href = `/design.html?id=${encodeURIComponent(data.id)}`;
-        }, 600);
-      } else {
-        form.reset();
-        resetPreview();
-      }
+      const notice = data?.message || "Tu diseño fue enviado y quedará en revisión.";
+      showMsg(notice, "ok");
+      form.reset();
+      resetPreview();
     } catch (err) {
       showMsg(err?.message || "No se pudo guardar el diseño.", "error");
       // console.error(err);
