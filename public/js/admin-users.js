@@ -30,13 +30,7 @@ async function guardAdmin() {
 }
 
 /* ------- Estado ------- */
-let state = {
-  page: 1,
-  limit: 10,
-  q: "",
-  role: "",
-  sort: "newest",
-};
+let state = { page: 1, limit: 10, q: "", role: "", sort: "newest" };
 
 /* ------- Controles ------- */
 const el = {
@@ -77,38 +71,77 @@ async function loadList() {
   el.next.disabled = data.page * state.limit >= data.total;
 
   el.rows.innerHTML = data.items.map(u => `
-    <tr data-id="${u.id}">
+    <tr data-id="${u.id}" data-banned="${u.banned ? '1':'0'}">
       <td>
-        <div><strong>${u.full_name || "—"}</strong></div>
+        <div><strong>${u.full_name || "—"}</strong> ${u.banned ? '<span class="role-pill" style="background:#fee2e2;color:#991b1b;margin-left:.4rem">Baneado</span>' : ''}</div>
         <div class="muted-sm">${u.persona_dni ? "DNI " + u.persona_dni : ""}</div>
       </td>
       <td>${u.username || "—"}</td>
       <td>${u.email}</td>
-      <td>${u.persona_dni || "—"}</td>
+      <td>${u.designs_published ?? 0}</td>
       <td><span class="role-pill">${u.role}</span></td>
       <td>${new Date(u.created_at).toLocaleDateString("es-AR")}</td>
       <td class="right">
         <div class="actions">
           <button class="btn" data-action="edit"><i class="fa-solid fa-pen"></i> Editar</button>
-          <button class="btn btn-danger" data-action="del"><i class="fa-solid fa-trash"></i> Eliminar</button>
+          ${u.banned
+            ? `<button class="btn" data-action="unban"><i class="fa-solid fa-unlock"></i> Desbanear</button>`
+            : `<button class="btn btn-danger" data-action="ban"><i class="fa-solid fa-ban"></i> Banear</button>`}
         </div>
       </td>
     </tr>
   `).join("");
 
-  // actions
+  // listeners
   el.rows.querySelectorAll("button[data-action]").forEach(btn => {
     const tr = btn.closest("tr");
     const id = tr.dataset.id;
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const action = btn.dataset.action;
-      if (action === "edit") openEdit(id, tr);
-      if (action === "del") confirmDel(id, tr);
+      if (action === "edit")   openEdit(id, tr);
+      if (action === "ban")    await confirmBan(id, tr);
+      if (action === "unban")  await confirmUnban(id, tr);
+      if (action === "del")    await confirmDel(id, tr);
     });
   });
 }
 
-/* ------- PATCH helper ------- */
+/* ------- BAN / UNBAN ------- */
+async function confirmBan(id) {
+  if (!confirm("¿Banear a este usuario? No podrá iniciar sesión.")) return;
+  const reason = prompt("Motivo del baneo (opcional):", "Cuenta baneada por infringir las reglas.") || "";
+  try {
+    const res = await fetch(api(`/admin/users/${id}/ban`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...auth() },
+      body: JSON.stringify({ reason }),
+      cache: "no-store"
+    });
+    const data = await res.json().catch(()=> ({}));
+    if (!res.ok) throw new Error(data?.error || "No se pudo banear");
+    await loadList();
+  } catch (e) {
+    alert(e.message || "No se pudo banear");
+  }
+}
+
+async function confirmUnban(id) {
+  try {
+    const res = await fetch(api(`/admin/users/${id}/unban`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...auth() },
+      body: JSON.stringify({}),
+      cache: "no-store"
+    });
+    const data = await res.json().catch(()=> ({}));
+    if (!res.ok) throw new Error(data?.error || "No se pudo desbanear");
+    await loadList();
+  } catch (e) {
+    alert(e.message || "No se pudo desbanear");
+  }
+}
+
+/* ------- PATCH helper (editar) ------- */
 async function patchUser(id, payload) {
   const res = await fetch(api(`/admin/users/${id}`), {
     method: "PATCH",
@@ -121,7 +154,7 @@ async function patchUser(id, payload) {
   return data;
 }
 
-/* ------- DELETE ------- */
+/* ------- DELETE opcional ------- */
 async function confirmDel(id, tr) {
   if (!confirm("¿Eliminar este usuario?")) return;
   const res = await fetch(api(`/admin/users/${id}`), {
@@ -130,10 +163,7 @@ async function confirmDel(id, tr) {
     cache: "no-store"
   });
   const data = await res.json().catch(()=> ({}));
-  if (!res.ok) {
-    alert(data?.error || "No se pudo eliminar");
-    return;
-  }
+  if (!res.ok) { alert(data?.error || "No se pudo eliminar"); return; }
   tr.remove();
 }
 

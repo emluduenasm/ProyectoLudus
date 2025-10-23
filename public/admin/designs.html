@@ -52,6 +52,11 @@
   <main class="admin-wrap">
     <h1>Panel admin · Diseños</h1>
 
+    <nav class="admin-subnav">
+      <a href="/admin/designs.html" class="tab"><i class="fa-solid fa-palette"></i> Diseños</a>
+      <a href="/admin/users.html"   class="tab"><i class="fa-solid fa-users-gear"></i> Usuarios</a>
+    </nav>
+
     <!-- Buscador rápido -->
     <div class="toolbar">
       <input id="q" type="search" class="input" placeholder="Buscar por título o diseñador…"/>
@@ -166,5 +171,14 @@
 
   <script src="/js/auth-ui.js" defer></script>
   <script src="/js/admin-designs.js" defer></script>
+  <script>
+  (function(){
+    const here = location.pathname.replace(/\/+$/, "");
+    document.querySelectorAll(".admin-subnav .tab").forEach(a => {
+      const href = a.getAttribute("href").replace(/\/+$/, "");
+      if (href === here) a.classList.add("active");
+    });
+  })();
+</script>
 </body>
 </html>

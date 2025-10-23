@@ -7,57 +7,68 @@
   const authHeaders = () => (token ? { Authorization: `Bearer ${token}` } : {});
 
   function renderHeader(me) {
-    // Este header asume la estructura que ya tienes en todas las páginas.
-    // Si el HTML difiere, ajusta los selectores.
-    const nav = document.querySelector(".menu");
-    if (!nav) return;
+  // Este header asume la estructura que ya tienes en todas las páginas.
+  const nav = document.querySelector(".menu");
+  if (!nav) return;
 
-    // Limpio duplicados de botones si re-renderizo
-    nav.querySelectorAll(".ui-slot").forEach((n) => n.remove());
+  // Limpio duplicados de botones si re-renderizo
+  nav.querySelectorAll(".ui-slot").forEach((n) => n.remove());
 
-    if (me) {
-      // Botón "Subir diseño"
+  if (me) {
+    if (me.role === "admin") {
+      // Botón "Panel admin"
+      const admin = document.createElement("a");
+      admin.href = "/admin/users.html";
+      admin.className = "btn btn-primary ui-slot";
+      admin.innerHTML = `<i class="fa-solid fa-gauge"></i> Panel admin`;
+      nav.appendChild(admin);
+
+      // Si hubiese enlaces estáticos a /upload.html en la página, los removemos:
+      document.querySelectorAll('a[href="/upload.html"]').forEach(a => a.remove());
+    } else {
+      // Botón "Subir diseño" (solo NO-admin)
       const up = document.createElement("a");
       up.href = "/upload.html";
       up.className = "btn btn-primary ui-slot";
       up.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño`;
       nav.appendChild(up);
-
-      // Hola, nombre (más visible)
-      const hola = document.createElement("span");
-      // CAMBIO ÚNICO: antes "ui-slot muted"
-      hola.className = "ui-slot user-chip";
-      hola.style.marginLeft = "0.75rem";
-      hola.textContent = `Hola, ${me.username || me.name || me.email}`;
-      nav.appendChild(hola);
-
-      // Salir
-      const out = document.createElement("a");
-      out.href = "#";
-      out.className = "btn ui-slot";
-      out.style.marginLeft = "0.5rem";
-      out.innerHTML = `<i class="fa-solid fa-right-from-bracket"></i> Salir`;
-      out.addEventListener("click", (e) => {
-        e.preventDefault();
-        localStorage.removeItem("token");
-        location.href = "/";
-      });
-      nav.appendChild(out);
-    } else {
-      const a1 = document.createElement("a");
-      a1.href = "/login.html";
-      a1.className = "btn ui-slot";
-      a1.innerHTML = `<i class="fa-solid fa-right-to-bracket"></i> Iniciar sesión`;
-      nav.appendChild(a1);
-
-      const a2 = document.createElement("a");
-      a2.href = "/register.html";
-      a2.className = "btn btn-primary ui-slot";
-      a2.style.marginLeft = "0.5rem";
-      a2.innerHTML = `<i class="fa-solid fa-user-plus"></i> Registrarse`;
-      nav.appendChild(a2);
     }
+
+    // Hola, nombre (chip visible)
+    const hola = document.createElement("span");
+    hola.className = "ui-slot user-chip";
+    hola.style.marginLeft = "0.75rem";
+    hola.textContent = `Hola, ${me.username || me.name || me.email}`;
+    nav.appendChild(hola);
+
+    // Salir
+    const out = document.createElement("a");
+    out.href = "#";
+    out.className = "btn ui-slot";
+    out.style.marginLeft = "0.5rem";
+    out.innerHTML = `<i class="fa-solid fa-right-from-bracket"></i> Salir`;
+    out.addEventListener("click", (e) => {
+      e.preventDefault();
+      localStorage.removeItem("token");
+      location.href = "/";
+    });
+    nav.appendChild(out);
+  } else {
+    const a1 = document.createElement("a");
+    a1.href = "/login.html";
+    a1.className = "btn ui-slot";
+    a1.innerHTML = `<i class="fa-solid fa-right-to-bracket"></i> Iniciar sesión`;
+    nav.appendChild(a1);
+
+    const a2 = document.createElement("a");
+    a2.href = "/register.html";
+    a2.className = "btn btn-primary ui-slot";
+    a2.style.marginLeft = "0.5rem";
+    a2.innerHTML = `<i class="fa-solid fa-user-plus"></i> Registrarse`;
+    nav.appendChild(a2);
   }
+}
+
 
   function show403() {
     const main = document.querySelector("main") || document.body;

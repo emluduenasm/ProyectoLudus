@@ -385,3 +385,28 @@ select:focus {
 #msg-login.error{ color: var(--error); }
 #msg-register.ok,
 #msg-login.ok{ color: var(--ok); }
+
+/* ===== Admin subnav ===== */
+.admin-subnav{
+  display:flex; gap:.5rem; align-items:center;
+  margin:.5rem 0 1rem;
+}
+.admin-subnav .tab{
+  display:inline-flex; align-items:center; gap:.5rem;
+  padding:.45rem .8rem;
+  border-radius:10px;
+  background:#fff;
+  color:#0f172a;
+  border:1px solid #e5e7eb;
+  box-shadow:var(--shadow-sm);
+  text-decoration:none;
+  font-weight:600;
+  transition:background .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.admin-subnav .tab:hover{
+  border-color:#d0d7e2; box-shadow:var(--shadow-md);
+}
+.admin-subnav .tab.active{
+  background:var(--brand); color:#fff; border-color:var(--brand);
+}
+.admin-subnav .tab i{ opacity:.9; }

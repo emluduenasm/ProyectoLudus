@@ -93,6 +93,12 @@ export const login = async (req, res) => {
     const user = rows[0];
     if (!user) return res.status(401).json({ error: "Credenciales inválidas" });
 
+    // NUEVO: bloqueado por baneo
+    if (user.banned) {
+      const reason = user.banned_reason || "Tu cuenta fue baneada por infringir las reglas.";
+      return res.status(403).json({ error: reason });
+    }
+
     const ok = await bcrypt.compare(data.password, user.password_hash);
     if (!ok) return res.status(401).json({ error: "Credenciales inválidas" });
 
@@ -104,6 +110,7 @@ export const login = async (req, res) => {
     res.status(500).json({ error: "Error de servidor" });
   }
 };
+
 
 // NUEVO: perfil del usuario autenticado
 export const me = async (req, res) => {

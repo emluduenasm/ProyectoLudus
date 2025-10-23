@@ -341,38 +341,59 @@ if (formLogin) {
   password.addEventListener("input", v.password);
 
   formLogin.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    msgGlobal.textContent = "";
-    msgGlobal.className = "muted";
+  e.preventDefault();
+  msgGlobal.textContent = "";
+  msgGlobal.className = "muted";
 
-    if (![v.email(), v.password()].every(Boolean)) {
-      msgGlobal.textContent = "Revisá los campos marcados en rojo.";
-      msgGlobal.className = "error";
-      return;
-    }
+  if (![v.email(), v.password()].every(Boolean)) {
+    msgGlobal.textContent = "Revisá los campos marcados en rojo.";
+    msgGlobal.className = "error";
+    return;
+  }
 
+  try {
+    // 1) Login
+    const res = await fetch(api("/login"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.value.trim(),
+        password: password.value
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw data;
+
+    // 2) Guardar token
+    localStorage.setItem("token", data.token);
+    msgGlobal.textContent = "¡Bienvenido!";
+    msgGlobal.className = "ok";
+
+    // 3) Obtener rol con /me (porque /login no lo devuelve)
+    let role = null;
     try {
-      const res = await fetch(api("/login"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.value.trim(),
-          password: password.value
-        })
+      const meRes = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${data.token}`, "Accept": "application/json" },
+        cache: "no-store"
       });
-      const data = await res.json();
-      if (!res.ok) throw data;
+      if (meRes.ok) {
+        const me = await meRes.json();
+        // según si usas controlador u rutas clásicas, me puede venir como { user:{...} } o directo
+        role = me?.user?.role || me?.role || null;
+      }
+    } catch { /* ignorar: si falla, caemos al default */ }
 
-      localStorage.setItem("token", data.token);
-      msgGlobal.textContent = "¡Bienvenido!";
-      msgGlobal.className = "ok";
+    // 4) Redirección por rol
+    let next = "/";
+    if (role === "admin")        next = "/admin/users.html";
+    else if (role === "designer") next = "/upload.html";
+    // buyers y otros → home
+    setTimeout(() => (window.location.href = next), 300);
+  } catch (err) {
+    msgGlobal.textContent = err?.error || "Error al ingresar";
+    msgGlobal.className = "error";
+  }
+});
 
-      // Redirigir según rol devuelto por el backend
-      const next = (data?.user?.role === "designer") ? "/upload.html" : "/";
-      setTimeout(() => (window.location.href = next), 600);
-    } catch (err) {
-      msgGlobal.textContent = err?.error || "Error al ingresar";
-      msgGlobal.className = "error";
-    }
-  });
+
 }
