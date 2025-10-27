@@ -32,6 +32,9 @@
     }
     .status-pill.published{background:#dcfce7;color:#166534}
     .status-pill.pending{background:#fef3c7;color:#92400e}
+    .status-pill.rejected{background:#fee2e2;color:#991b1b}
+    .preview-frame{margin-top:.5rem;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:.5rem;display:none;justify-content:center}
+    .preview-frame img{max-width:100%;border-radius:8px;display:block}
   </style>
 </head>
 <body>
@@ -80,6 +83,7 @@
   <form id="formEdit" method="dialog" class="card" style="padding:1rem">
     <h3>Editar diseño</h3>
     <input type="hidden" name="id"/>
+    <p id="statusNote" class="muted-sm" style="margin-bottom:.75rem"></p>
     <div class="grid">
       <label>Título
         <input class="input" type="text" name="title" required minlength="3" maxlength="120"/>
@@ -87,9 +91,15 @@
       <label>Categoría
         <select class="input" name="category_id" id="selCategory"></select>
       </label>
+      <label>Imagen
+        <input class="input" type="file" name="image" accept="image/png,image/jpeg,image/webp" />
+      </label>
       <label>Descripción
         <textarea class="input" name="description" rows="4" placeholder="Opcional"></textarea>
       </label>
+    </div>
+    <div class="preview-frame" id="wrapPreview">
+      <img id="editPreview" alt="Vista previa" />
     </div>
     <div id="msgEdit" class="muted-sm" style="margin-top:.5rem"></div>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">

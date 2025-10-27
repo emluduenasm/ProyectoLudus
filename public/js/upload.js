@@ -6,6 +6,8 @@
   const sel = $("#selCategory");
   const file = $("#file");
   const preview = $("#preview");
+  const mockupWrap = $("#mockupWrap");
+  const mockupImg = $("#mockupImg");
   const msg = $("#msg");
   const btn = $("#btnSave");
 
@@ -19,9 +21,12 @@
     msg.textContent = text || "";
   }
   function resetPreview() {
-    if (!preview) return;
-    preview.removeAttribute("src");
-    preview.style.display = "none";
+    if (preview) {
+      preview.removeAttribute("src");
+      preview.style.display = "none";
+    }
+    if (mockupWrap) mockupWrap.style.display = "none";
+    if (mockupImg) mockupImg.removeAttribute("src");
   }
 
   // ---------- Vista previa (modo seguro con FileReader) ----------
@@ -134,6 +139,10 @@
       showMsg(notice, "ok");
       form.reset();
       resetPreview();
+      if (data?.mockup_remera && mockupWrap && mockupImg) {
+        mockupImg.src = data.mockup_remera;
+        mockupWrap.style.display = "block";
+      }
     } catch (err) {
       showMsg(err?.message || "No se pudo guardar el diseño.", "error");
       // console.error(err);

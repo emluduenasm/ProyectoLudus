@@ -12,8 +12,11 @@ const router = Router();
 /* ---------- Paths y helpers ---------- */
 const uploadsDir = path.join(process.cwd(), "public", "img", "uploads");
 const thumbsDir  = path.join(uploadsDir, "thumbs");
+const mockupsDir = path.join(uploadsDir, "mockups");
+const productosDir = path.join(process.cwd(), "public", "img", "productos");
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(thumbsDir,  { recursive: true });
+fs.mkdirSync(mockupsDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -61,6 +64,52 @@ async function removeFileIfExists(filePathAbs) {
   } catch {}
 }
 
+const remeraTemplatePath = path.join(productosDir, "producto-remera.jpg");
+
+async function removeRemeraMockup(designId) {
+  const filename = `${designId}-remera.jpg`;
+  await removeFileIfExists(path.join(mockupsDir, filename));
+}
+
+async function getRemeraMockupUrl(designId) {
+  const filename = `${designId}-remera.jpg`;
+  try {
+    await fs.promises.access(path.join(mockupsDir, filename));
+    return `/img/uploads/mockups/${filename}`;
+  } catch {
+    return null;
+  }
+}
+
+async function generateRemeraMockup(designId, designPath) {
+  try {
+    await fs.promises.access(remeraTemplatePath);
+    const meta = await sharp(remeraTemplatePath).metadata();
+    const overlay = await sharp(designPath)
+      .resize({
+        width: Math.round((meta.width || 1000) * 0.6),
+        height: Math.round((meta.height || 1000) * 0.6),
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .png()
+      .toBuffer();
+
+    const outputFilename = `${designId}-remera.jpg`;
+    const outputPath = path.join(mockupsDir, outputFilename);
+
+    await sharp(remeraTemplatePath)
+      .composite([{ input: overlay, gravity: "center" }])
+      .jpeg({ quality: 90 })
+      .toFile(outputPath);
+
+    return `/img/uploads/mockups/${outputFilename}`;
+  } catch (err) {
+    console.error("Mockup remera error", err?.message || err);
+    return null;
+  }
+}
+
 /* ---------- Endpoints públicos ---------- */
 
 // Diseños destacados por likes (incluye categoría)
@@ -83,7 +132,11 @@ router.get("/featured", async (req, res) => {
        LIMIT $1`,
       [limit]
     );
-    res.json(rows);
+    const withMockup = await Promise.all(rows.map(async (row) => ({
+      ...row,
+      mockup_remera: await getRemeraMockupUrl(row.id)
+    })));
+    res.json(withMockup);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "No se pudieron cargar los diseños destacados" });
@@ -98,7 +151,9 @@ router.get("/mine", requireAuth, async (req, res) => {
     const userId = req.user.id;
     const { rows } = await pool.query(
       `SELECT d.id, d.title, d.description, d.image_url, d.thumbnail_url,
-              d.published, d.created_at, COUNT(l.user_id)::int AS likes,
+              d.published,
+              COALESCE(d.review_status, CASE WHEN d.published = TRUE THEN 'approved' ELSE 'pending' END) AS review_status,
+              d.created_at, COUNT(l.user_id)::int AS likes,
               c.name AS category_name, d.category_id
        FROM designs d
        JOIN designers g ON g.id = d.designer_id
@@ -138,13 +193,16 @@ router.post("/", requireAuth, upload.single("image"), async (req, res) => {
     const category_id = await resolveCategoryId(bodyCat);
 
     const ins = await pool.query(
-      `INSERT INTO designs (designer_id, title, description, image_url, thumbnail_url, published, category_id)
-       VALUES ($1,$2,$3,$4,$5, FALSE, $6)
-       RETURNING id, title, description, image_url, thumbnail_url, published, category_id, created_at`,
+      `INSERT INTO designs (designer_id, title, description, image_url, thumbnail_url, published, review_status, category_id)
+       VALUES ($1,$2,$3,$4,$5, FALSE, 'pending', $6)
+       RETURNING id, title, description, image_url, thumbnail_url, published, review_status, category_id, created_at`,
       [designerId, title.trim(), (description || "").trim(), imageUrl, thumbUrl, category_id]
     );
+    const design = ins.rows[0];
+    const mockup = await generateRemeraMockup(design.id, srcPath);
     res.status(201).json({
-      ...ins.rows[0],
+      ...design,
+      mockup_remera: mockup,
       message: "Diseño recibido. Quedó en revisión del equipo antes de publicarse."
     });
   } catch (e) {
@@ -160,59 +218,150 @@ router.patch("/:id", requireAuth, async (req, res) => {
     const userId = req.user.id;
     const { title, description, category_id } = req.body ?? {};
 
-    if (
-      typeof title === "undefined" &&
-      typeof description === "undefined" &&
-      typeof category_id === "undefined"
-    ) {
-      return res.status(400).json({ error: "Sin cambios" });
-    }
-
-    const belongs = await pool.query(
-      `SELECT d.id
+    const currentQ = await pool.query(
+      `SELECT d.id, d.title, d.description, d.category_id,
+              COALESCE(d.review_status, CASE WHEN d.published = TRUE THEN 'approved' ELSE 'pending' END) AS review_status,
+              d.published,
+              d.image_url,
+              d.thumbnail_url
        FROM designs d
        JOIN designers g ON g.id = d.designer_id
        WHERE d.id = $1 AND g.user_id = $2`,
       [id, userId]
     );
-    if (!belongs.rowCount) return res.status(404).json({ error: "Diseño no encontrado" });
+    if (!currentQ.rowCount) return res.status(404).json({ error: "Diseño no encontrado" });
+    const current = currentQ.rows[0];
 
     const fields = [];
     const values = [];
     let idx = 1;
+    let contentChanged = false;
 
     if (typeof title === "string") {
       const clean = title.trim();
       if (clean.length < 3) return res.status(400).json({ error: "Título muy corto" });
-      fields.push(`title = $${idx++}`);
-      values.push(clean);
+      if (clean !== (current.title || "")) {
+        fields.push(`title = $${idx++}`);
+        values.push(clean);
+        contentChanged = true;
+      }
     }
     if (typeof description === "string") {
-      fields.push(`description = $${idx++}`);
-      values.push(description.trim());
+      const cleanDesc = description.trim();
+      if (cleanDesc !== (current.description || "")) {
+        fields.push(`description = $${idx++}`);
+        values.push(cleanDesc);
+        contentChanged = true;
+      }
     }
     if (typeof category_id !== "undefined") {
       const cat = await resolveCategoryId(category_id, { strict: true });
       if (!cat) return res.status(400).json({ error: "Categoría inválida" });
-      fields.push(`category_id = $${idx++}`);
-      values.push(cat);
+      if (String(cat) !== String(current.category_id || "")) {
+        fields.push(`category_id = $${idx++}`);
+        values.push(cat);
+        contentChanged = true;
+      }
     }
 
-    if (!fields.length) return res.status(400).json({ error: "Sin cambios" });
+    let nextStatus = current.review_status || "pending";
+    let nextPublished = current.published;
 
+    if (contentChanged) {
+      nextStatus = "pending";
+      nextPublished = false;
+    }
+
+    if (nextStatus !== current.review_status) {
+      fields.push(`review_status = $${idx++}`);
+      values.push(nextStatus);
+    }
+    if (nextPublished !== current.published) {
+      fields.push(`published = $${idx++}`);
+      values.push(nextPublished);
+    }
+
+    if (!fields.length) {
+      return res.json({
+        id,
+        title: current.title,
+        description: current.description,
+        category_id: current.category_id,
+        review_status: current.review_status,
+        published: current.published,
+        image_url: current.image_url,
+        thumbnail_url: current.thumbnail_url,
+        mockup_remera: await getRemeraMockupUrl(id)
+      });
+    }
+
+    fields.push("updated_at = NOW()");
     values.push(id);
     const updated = await pool.query(
       `UPDATE designs
          SET ${fields.join(", ")}
        WHERE id = $${idx}
-       RETURNING id, title, description, category_id, published, image_url, thumbnail_url, created_at`,
+       RETURNING id, title, description, category_id, review_status, published, image_url, thumbnail_url, created_at`,
       values
     );
-
-    res.json(updated.rows[0]);
+    const updatedDesign = updated.rows[0];
+    res.json({ ...updatedDesign, mockup_remera: await getRemeraMockupUrl(id) });
   } catch (e) {
     console.error("PATCH /designs/:id", e);
     res.status(500).json({ error: "No se pudo actualizar el diseño" });
+  }
+});
+
+// Reemplazar imagen del diseño
+router.put("/:id/image", requireAuth, upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
+
+    const { id } = req.params;
+    const userId = req.user.id;
+    const currentQ = await pool.query(
+      `SELECT d.image_url, d.thumbnail_url
+       FROM designs d
+       JOIN designers g ON g.id = d.designer_id
+       WHERE d.id = $1 AND g.user_id = $2`,
+      [id, userId]
+    );
+    if (!currentQ.rowCount) return res.status(404).json({ error: "Diseño no encontrado" });
+    const current = currentQ.rows[0];
+
+    for (const url of [current.image_url, current.thumbnail_url]) {
+      if (!url) continue;
+      const abs = path.join(process.cwd(), "public", url);
+      await removeFileIfExists(abs);
+    }
+
+    const srcPath = req.file.path;
+    const ext = path.extname(srcPath).toLowerCase();
+    const thumbName = req.file.filename.replace(ext, `.thumb${ext || ".jpg"}`);
+    const thumbPath = path.join(thumbsDir, thumbName);
+    await sharp(srcPath).resize({ width: 600, withoutEnlargement: true }).toFile(thumbPath);
+
+    const imageUrl = `/img/uploads/${req.file.filename}`;
+    const thumbUrl = `/img/uploads/thumbs/${thumbName}`;
+
+    const upd = await pool.query(
+      `UPDATE designs
+         SET image_url=$1,
+             thumbnail_url=$2,
+             review_status='pending',
+             published=FALSE,
+             updated_at = NOW()
+       WHERE id=$3
+       RETURNING id, image_url, thumbnail_url, review_status, published, title, description, category_id, created_at`,
+      [imageUrl, thumbUrl, id]
+    );
+    await removeRemeraMockup(id);
+    const mockup = await generateRemeraMockup(id, srcPath);
+
+    res.json({ ...upd.rows[0], mockup_remera: mockup });
+  } catch (e) {
+    console.error("PUT /designs/:id/image", e);
+    res.status(500).json({ error: "No se pudo reemplazar la imagen" });
   }
 });
 
@@ -233,6 +382,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
     await pool.query(`DELETE FROM design_likes WHERE design_id=$1`, [id]);
     await pool.query(`DELETE FROM designs WHERE id=$1`, [id]);
+    await removeRemeraMockup(id);
 
     for (const url of [find.rows[0].image_url, find.rows[0].thumbnail_url]) {
       if (!url) continue;
@@ -255,7 +405,9 @@ router.get("/:id", async (req, res) => {
       `SELECT d.id, d.title, d.description, d.image_url, d.thumbnail_url,
               d.created_at, COUNT(l.user_id)::int AS likes,
               COALESCE(u.username, u.name, 'Anónimo') AS designer_name,
-              c.name AS category_name, d.category_id
+              c.name AS category_name, d.category_id,
+              COALESCE(d.review_status, CASE WHEN d.published = TRUE THEN 'approved' ELSE 'pending' END) AS review_status,
+              d.published
        FROM designs d
        JOIN designers g ON g.id = d.designer_id
        JOIN users u ON u.id = g.user_id
@@ -266,7 +418,7 @@ router.get("/:id", async (req, res) => {
       [id]
     );
     if (!q.rows.length) return res.status(404).json({ error: "Diseño no encontrado" });
-    res.json(q.rows[0]);
+    res.json({ ...q.rows[0], mockup_remera: await getRemeraMockupUrl(id) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Error al obtener el diseño" });

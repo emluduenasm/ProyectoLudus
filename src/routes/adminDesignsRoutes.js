@@ -10,8 +10,11 @@ import sharp from "sharp";
 const router = Router();
 const uploadsDir = path.join(process.cwd(), "public", "img", "uploads");
 const thumbsDir  = path.join(uploadsDir, "thumbs");
+const mockupsDir = path.join(uploadsDir, "mockups");
+const productosDir = path.join(process.cwd(), "public", "img", "productos");
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(thumbsDir,  { recursive: true });
+fs.mkdirSync(mockupsDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -31,6 +34,42 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: 8 * 1024 * 1024
 const onlyAdmin = [requireAuth, requireRole("admin")];
 
 async function removeFileIfExists(filePathAbs) { try { await fs.promises.unlink(filePathAbs); } catch {} }
+
+const remeraTemplatePath = path.join(productosDir, "producto-remera.jpg");
+
+async function removeRemeraMockup(designId) {
+  const filename = `${designId}-remera.jpg`;
+  await removeFileIfExists(path.join(mockupsDir, filename));
+}
+
+async function generateRemeraMockup(designId, designPath) {
+  try {
+    await fs.promises.access(remeraTemplatePath);
+    const meta = await sharp(remeraTemplatePath).metadata();
+    const overlay = await sharp(designPath)
+      .resize({
+        width: Math.round((meta.width || 1000) * 0.6),
+        height: Math.round((meta.height || 1000) * 0.6),
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .png()
+      .toBuffer();
+
+    const outputFilename = `${designId}-remera.jpg`;
+    const outputPath = path.join(mockupsDir, outputFilename);
+
+    await sharp(remeraTemplatePath)
+      .composite([{ input: overlay, gravity: "center" }])
+      .jpeg({ quality: 90 })
+      .toFile(outputPath);
+
+    return `/img/uploads/mockups/${outputFilename}`;
+  } catch (err) {
+    console.error("ADMIN mockup remera", err?.message || err);
+    return null;
+  }
+}
 
 /* ------- LIST (búsqueda + filtros + orden + paginación) ------- */
 router.get("/", ...onlyAdmin, async (req, res) => {
@@ -98,7 +137,9 @@ router.get("/", ...onlyAdmin, async (req, res) => {
     // Datos
     const rowsQ = await pool.query(
       `WITH base AS (
-         SELECT d.id, d.title, d.description, d.published, d.created_at,
+         SELECT d.id, d.title, d.description, d.published,
+                COALESCE(d.review_status, CASE WHEN d.published = TRUE THEN 'approved' ELSE 'pending' END) AS review_status,
+                d.created_at,
                 d.image_url, d.thumbnail_url, d.category_id,
                 COALESCE(u.username, u.name, 'Anónimo') AS designer_name,
                 u.username AS designer_username,
@@ -141,11 +182,16 @@ router.get("/", ...onlyAdmin, async (req, res) => {
 router.patch("/:id", ...onlyAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    let { title, description, published, category_id } = req.body;
+    let { title, description, published, category_id, review_status } = req.body;
 
     if (typeof category_id !== "undefined") {
       const vr = await pool.query(`SELECT id FROM categories WHERE id=$1 AND active=TRUE`, [category_id]);
       if (!vr.rowCount) return res.status(400).json({ error: "Categoría inválida" });
+    }
+
+    const allowedStatuses = ["pending", "approved", "rejected"];
+    if (typeof review_status !== "undefined" && !allowedStatuses.includes(review_status)) {
+      return res.status(400).json({ error: "Estado inválido" });
     }
 
     const fields = [];
@@ -160,14 +206,23 @@ router.patch("/:id", ...onlyAdmin, async (req, res) => {
     if (typeof description === "string") {
       fields.push(`description = $${idx++}`); values.push(description.trim());
     }
-    if (typeof published !== "undefined") {
-      fields.push(`published = $${idx++}`); values.push(!!published);
-    }
     if (typeof category_id !== "undefined") {
       fields.push(`category_id = $${idx++}`); values.push(category_id);
     }
+    if (typeof review_status !== "undefined") {
+      fields.push(`review_status = $${idx++}`); values.push(review_status);
+      if (review_status === "approved") {
+        published = true;
+      } else if (review_status === "pending" || review_status === "rejected") {
+        published = false;
+      }
+    }
+    if (typeof published !== "undefined") {
+      fields.push(`published = $${idx++}`); values.push(!!published);
+    }
     if (!fields.length) return res.status(400).json({ error: "Sin cambios" });
 
+    fields.push("updated_at = NOW()");
     values.push(id);
     const upd = await pool.query(
       `UPDATE designs SET ${fields.join(", ")} WHERE id=$${idx} RETURNING *`,
@@ -206,10 +261,18 @@ router.put("/:id/image", ...onlyAdmin, upload.single("image"), async (req, res) 
     const thumbUrl = `/img/uploads/thumbs/${thumbName}`;
 
     const upd = await pool.query(
-      `UPDATE designs SET image_url=$1, thumbnail_url=$2 WHERE id=$3 RETURNING *`,
+      `UPDATE designs
+         SET image_url=$1,
+             thumbnail_url=$2,
+             review_status='pending',
+             published=FALSE,
+             updated_at = NOW()
+       WHERE id=$3 RETURNING *`,
       [imageUrl, thumbUrl, id]
     );
-    res.json(upd.rows[0]);
+    await removeRemeraMockup(id);
+    const mockup = await generateRemeraMockup(id, srcPath);
+    res.json({ ...upd.rows[0], mockup_remera: mockup });
   } catch (e) {
     console.error("ADMIN designs replace image", e);
     res.status(500).json({ error: "No se pudo reemplazar la imagen" });
@@ -225,6 +288,7 @@ router.delete("/:id", ...onlyAdmin, async (req, res) => {
 
     await pool.query(`DELETE FROM design_likes WHERE design_id=$1`, [id]);
     await pool.query(`DELETE FROM designs WHERE id=$1`, [id]);
+    await removeRemeraMockup(id);
 
     for (const url of [find.rows[0].image_url, find.rows[0].thumbnail_url]) {
       if (!url) continue;

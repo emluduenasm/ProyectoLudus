@@ -66,6 +66,17 @@ const bootstrap = async () => {
   `);
   await pool.query(`
     ALTER TABLE designs
+      ADD COLUMN IF NOT EXISTS review_status TEXT DEFAULT 'pending';
+  `);
+  await pool.query(`
+    UPDATE designs
+      SET review_status = CASE
+        WHEN published = TRUE THEN 'approved'
+        ELSE COALESCE(review_status, 'pending')
+      END;
+  `);
+  await pool.query(`
+    ALTER TABLE designs
       ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
   `);
 

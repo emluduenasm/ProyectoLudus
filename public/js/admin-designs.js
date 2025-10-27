@@ -3,6 +3,8 @@ const api = (p) => (p.startsWith("/api") ? p : `/api${p}`);
 const $ = (s, r=document) => r.querySelector(s);
 const token = localStorage.getItem("token") || "";
 const auth = () => (token ? { Authorization: `Bearer ${token}` } : {});
+const esc = (s) => String(s ?? "").replace(/[&<>""]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#39;"}[ch] || ch));
+const escAttr = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 let CATEGORIES = [];
 
@@ -120,9 +122,9 @@ function renderReviewQueue(items) {
   }
   el.reviewList.innerHTML = items.map(d => `
     <article class="review-card" data-id="${d.id}">
-      <img class="thumb" src="${d.thumbnail_url || d.image_url}" alt="${d.title}"/>
+      <img class="thumb" src="${esc(d.thumbnail_url || d.image_url)}" alt="${esc(d.title)}"/>
       <div>
-        <h3>${d.title}</h3>
+        <h3>${esc(d.title)}</h3>
         <div class="review-meta">
           ${new Date(d.created_at).toLocaleDateString("es-AR")} · ${(d.category_name || categoryNameById(d.category_id))}
           · Likes: ${d.likes ?? 0}
@@ -176,14 +178,14 @@ async function loadList() {
   el.next.disabled = data.page * state.limit >= data.total;
 
   el.rows.innerHTML = data.items.map(d => `
-    <tr data-id="${d.id}" data-img="${d.image_url}" data-cat="${d.category_id}">
-      <td><img class="thumb" src="${d.thumbnail_url || d.image_url}" alt="${d.title}"/></td>
+    <tr data-id="${d.id}" data-img="${d.image_url}" data-cat="${d.category_id}" data-status="${d.review_status || (d.published ? 'approved' : 'pending')}" data-desc="${escAttr(d.description)}">
+      <td><img class="thumb" src="${esc(d.thumbnail_url || d.image_url)}" alt="${esc(d.title)}"/></td>
       <td>
-        <div><strong>${d.title}</strong></div>
+        <div><strong>${esc(d.title)}</strong></div>
         <div class="muted-sm">${new Date(d.created_at).toLocaleDateString("es-AR")}</div>
       </td>
       <td>
-        <div><strong>${d.designer_username || d.designer_name || "—"}</strong></div>
+        <div><strong>${esc(d.designer_username || d.designer_name || "—")}</strong></div>
         ${d.designer_banned ? `<div><span class="designer-badge-banned">Baneado</span></div>` : ""}
         ${(d.designer_full_name || d.designer_dni)
           ? `<div class="muted-sm">${[
@@ -192,12 +194,23 @@ async function loadList() {
             ].filter(Boolean).join(" · ")}</div>`
           : ""}
       </td>
-      <td>${d.category_name || categoryNameById(d.category_id)}</td>
+      <td>${esc(d.category_name || categoryNameById(d.category_id))}</td>
       <td>${d.likes ?? 0}</td>
       <td>
-        <label title="${d.published ? 'Publicado' : 'No publicado'}">
-          <input type="checkbox" class="switch pub-toggle" ${d.published ? "checked":""}/>
-        </label>
+        <div style="display:flex;flex-direction:column;gap:.35rem;align-items:flex-start">
+          ${
+            d.review_status === "approved"
+              ? `<span class="status-pill published"><i class="fa-solid fa-circle-check"></i> Publicado</span>`
+              : d.review_status === "rejected"
+                ? `<span class="status-pill rejected"><i class="fa-solid fa-circle-xmark"></i> Rechazado</span>`
+                : `<span class="status-pill pending"><i class="fa-solid fa-hourglass-half"></i> En revisión</span>`
+          }
+          ${d.review_status === "rejected"
+            ? ""
+            : `<label title="${d.published ? 'Publicado' : 'No publicado'}">
+                <input type="checkbox" class="switch pub-toggle" ${d.published ? "checked":""}/>
+              </label>`}
+        </div>
       </td>
       <td class="right">
         <div class="actions">
@@ -228,7 +241,7 @@ async function loadList() {
     chk.addEventListener("change", async () => {
       chk.disabled = true;
       try {
-        await patchDesign(id, { published: chk.checked });
+        await patchDesign(id, { published: chk.checked, review_status: chk.checked ? 'approved' : 'pending' });
         await loadList();
       } catch(e){
         console.error(e);
@@ -301,17 +314,21 @@ function setForm(design) {
   form.title.value = design.title || "";
   form.description.value = design.description || "";
   form.published.checked = !!design.published;
+  form.dataset.status = design.review_status || "pending";
   fillCategorySelect(design.category_id || design.cat);
 }
 
 async function openEdit(id, tr) {
+  const toggle = tr.querySelector(".pub-toggle");
+  const status = tr.dataset.status || "pending";
   setForm({
     id,
-    title: tr.querySelector("strong").textContent,
-    description: "",
-    published: tr.querySelector(".pub-toggle").checked,
+    title: tr.querySelector("strong").textContent.trim(),
+    description: tr.dataset.desc ? tr.dataset.desc : "",
+    published: toggle ? toggle.checked : status === "approved",
     category_id: tr.dataset.cat,
-    cat: tr.dataset.cat
+    cat: tr.dataset.cat,
+    review_status: status
   });
   msg.textContent = "";
   dlg.showModal();
@@ -325,7 +342,8 @@ form.addEventListener("submit", async (e) => {
     title: form.title.value.trim(),
     description: form.description.value.trim(),
     published: form.published.checked,
-    category_id: selCat.value
+    category_id: selCat.value,
+    review_status: form.published.checked ? "approved" : (form.dataset.status === "rejected" ? "rejected" : "pending")
   };
   try {
     await patchDesign(id, payload);
