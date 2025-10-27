@@ -39,14 +39,18 @@
   function render(d, liked=false, me=null) {
     // Contenedor izquierdo alto fijo adaptable y la imagen llena el cuadro manteniendo proporciones
     wrap.innerHTML = `
-      <div class="preview card" style="
-        display:flex;align-items:center;justify-content:center;
-        background:#f8fafc;border-radius:16px;
-        height:clamp(320px,60vh,720px); /* Alto flexible */
-        padding:0.5rem;
-      ">
-        <img src="${d.image_url}" alt="${d.title}"
-             style="width:100%;height:100%;object-fit:contain;border-radius:12px;" />
+      <div class="detail-media">
+        <div class="media-card">
+          <h3>Diseño original</h3>
+          <img src="${d.image_url}" alt="${d.title}"
+               style="width:100%;object-fit:contain;border-radius:12px;" />
+        </div>
+        ${d.mockup_remera ? `
+        <div class="media-card">
+          <h3>Mockup remera</h3>
+          <img src="${d.mockup_remera}" alt="Mockup remera de ${d.title}"
+               style="width:100%;object-fit:contain;border-radius:12px;" />
+        </div>` : ""}
       </div>
 
       <aside class="meta">

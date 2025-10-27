@@ -3,7 +3,9 @@ const api = (p) => (p.startsWith("/api") ? p : `/api${p}`);
 const $ = (s, r=document) => r.querySelector(s);
 const token = localStorage.getItem("token") || "";
 const auth = () => (token ? { Authorization: `Bearer ${token}` } : {});
-const esc = (s) => String(s ?? "").replace(/[&<>""]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#39;"}[ch] || ch));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) => (
+  { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch
+));
 const escAttr = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 let CATEGORIES = [];
@@ -122,9 +124,13 @@ function renderReviewQueue(items) {
   }
   el.reviewList.innerHTML = items.map(d => `
     <article class="review-card" data-id="${d.id}">
-      <img class="thumb" src="${esc(d.thumbnail_url || d.image_url)}" alt="${esc(d.title)}"/>
+      <a class="link" href="/design.html?id=${encodeURIComponent(d.id)}" style="display:inline-flex">
+        <img class="thumb" src="${esc(d.thumbnail_url || d.image_url)}" alt="${esc(d.title)}"/>
+      </a>
       <div>
-        <h3>${esc(d.title)}</h3>
+        <h3>
+          <a class="link" href="/design.html?id=${encodeURIComponent(d.id)}">${esc(d.title)}</a>
+        </h3>
         <div class="review-meta">
           ${new Date(d.created_at).toLocaleDateString("es-AR")} · ${(d.category_name || categoryNameById(d.category_id))}
           · Likes: ${d.likes ?? 0}
@@ -179,9 +185,17 @@ async function loadList() {
 
   el.rows.innerHTML = data.items.map(d => `
     <tr data-id="${d.id}" data-img="${d.image_url}" data-cat="${d.category_id}" data-status="${d.review_status || (d.published ? 'approved' : 'pending')}" data-desc="${escAttr(d.description)}">
-      <td><img class="thumb" src="${esc(d.thumbnail_url || d.image_url)}" alt="${esc(d.title)}"/></td>
       <td>
-        <div><strong>${esc(d.title)}</strong></div>
+        <a class="link" href="/design.html?id=${encodeURIComponent(d.id)}" style="display:inline-flex">
+          <img class="thumb" src="${esc(d.thumbnail_url || d.image_url)}" alt="${esc(d.title)}"/>
+        </a>
+      </td>
+      <td>
+        <div>
+          <a class="link" href="/design.html?id=${encodeURIComponent(d.id)}">
+            <strong>${esc(d.title)}</strong>
+          </a>
+        </div>
         <div class="muted-sm">${new Date(d.created_at).toLocaleDateString("es-AR")}</div>
       </td>
       <td>
@@ -272,7 +286,7 @@ async function patchDesign(id, payload) {
 async function publishDesign(id, btn) {
   if (btn) btn.disabled = true;
   try {
-    await patchDesign(id, { published: true });
+    await patchDesign(id, { published: true, review_status: "approved" });
     await loadList();
   } catch (e) {
     alert(e.message || "No se pudo publicar el diseño.");

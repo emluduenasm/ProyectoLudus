@@ -13,6 +13,7 @@
 
   const token = localStorage.getItem("token") || "";
   const authHeaders = () => (token ? { Authorization: `Bearer ${token}` } : {});
+  let previewSeq = 0;
 
   // ---------- Utils de UI ----------
   function showMsg(text, type = "muted") {
@@ -26,7 +27,52 @@
       preview.style.display = "none";
     }
     if (mockupWrap) mockupWrap.style.display = "none";
-    if (mockupImg) mockupImg.removeAttribute("src");
+    if (mockupImg) {
+      mockupImg.removeAttribute("src");
+      mockupImg.style.display = "none";
+    }
+  }
+
+  async function updateMockupPreview(file, seq) {
+    if (!mockupWrap || !mockupImg) return;
+    mockupWrap.style.display = "none";
+    mockupImg.removeAttribute("src");
+    mockupImg.style.display = "none";
+
+    const fd = new FormData();
+    fd.append("image", file);
+
+    try {
+      const res = await fetch(api("/designs/mockup-preview"), {
+        method: "POST",
+        headers: { ...authHeaders() },
+        body: fd,
+      });
+
+      if (res.status === 401) {
+        const next = encodeURIComponent(location.pathname + location.search);
+        location.href = `/login.html?next=${next}`;
+        return;
+      }
+
+      if (!res.ok) throw new Error("No se pudo generar el mockup.");
+      const data = await safeJSON(res);
+
+      if (seq !== previewSeq) return; // respuesta desactualizada
+
+      if (data?.mockup) {
+        mockupImg.src = data.mockup;
+        mockupImg.style.display = "block";
+        mockupWrap.style.display = "flex";
+      }
+    } catch (err) {
+      if (seq === previewSeq) {
+        mockupWrap.style.display = "none";
+        mockupImg.removeAttribute("src");
+        mockupImg.style.display = "none";
+        showMsg("No se pudo generar la vista previa del mockup. Podés continuar con la carga.", "muted");
+      }
+    }
   }
 
   // ---------- Vista previa (modo seguro con FileReader) ----------
@@ -56,6 +102,7 @@
       return;
     }
 
+    const seq = ++previewSeq;
     const reader = new FileReader();
     reader.onload = (e) => {
       preview.src = e.target.result;
@@ -68,6 +115,7 @@
       resetPreview();
     };
     reader.readAsDataURL(f);
+    updateMockupPreview(f, seq);
   });
 
   // ---------- Categorías ----------
@@ -139,10 +187,6 @@
       showMsg(notice, "ok");
       form.reset();
       resetPreview();
-      if (data?.mockup_remera && mockupWrap && mockupImg) {
-        mockupImg.src = data.mockup_remera;
-        mockupWrap.style.display = "block";
-      }
     } catch (err) {
       showMsg(err?.message || "No se pudo guardar el diseño.", "error");
       // console.error(err);

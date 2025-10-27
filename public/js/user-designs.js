@@ -161,9 +161,17 @@
             : "";
           return `
           <tr data-id="${esc(d.id)}">
-            <td><img class="thumb" src="${esc(d.thumbnail_url || d.image_url)}" alt="${esc(d.title)}"/></td>
             <td>
-              <div><strong>${esc(d.title)}</strong></div>
+              <a class="link" href="/design.html?id=${encodeURIComponent(d.id)}" style="display:inline-flex">
+                <img class="thumb" src="${esc(d.thumbnail_url || d.image_url)}" alt="${esc(d.title)}"/>
+              </a>
+            </td>
+            <td>
+              <div>
+                <a class="link" href="/design.html?id=${encodeURIComponent(d.id)}">
+                  <strong>${esc(d.title)}</strong>
+                </a>
+              </div>
               <div class="muted-sm">${new Date(d.created_at).toLocaleDateString("es-AR")} · ${categoryName(d.category_id)}</div>
               ${d.description ? `<div class="muted-sm" style="margin-top:.25rem">${esc(d.description)}</div>` : ""}
               ${rejectedNote}

@@ -42,7 +42,27 @@
       margin-top: 6px;
       background: #0b25370a;
       border-radius: 12px;
-      padding: 8px;
+      padding: 12px;
+    }
+    .preview-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .preview-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.15);
+    }
+    .preview-card h4 {
+      margin: 0;
+      font-size: 14px;
+      color: #475569;
+      font-weight: 600;
     }
     .preview-img {
       width: 100%;
@@ -84,7 +104,7 @@
     <p class="muted" style="margin-top:4px">Una vez enviado, tu diseño quedará en revisión y un administrador lo publicará cuando lo apruebe.</p>
 
     <form id="formUpload" class="form-grid" novalidate>
-      <div class="span-2">
+      <div>
         <label>Título del diseño
           <input class="input" name="title" required minlength="3" />
         </label>
@@ -96,21 +116,30 @@
         </label>
       </div>
 
-      <div>
-        <label>Imagen
-          <input class="input" type="file" name="image" id="file" accept="image/png,image/jpeg,image/webp" required />
-        </label>
-        <div class="hint">Se generará automáticamente una miniatura optimizada.</div>
-      </div>
-
       <div class="span-2">
         <label>Descripción (opcional)
           <textarea class="input" name="description" rows="4" placeholder="Contanos de qué se trata…"></textarea>
         </label>
       </div>
 
+      <div class="span-2">
+        <label>Imagen
+          <input class="input" type="file" name="image" id="file" accept="image/png,image/jpeg,image/webp" required />
+        </label>
+        <div class="hint">Se generará automáticamente una miniatura optimizada.</div>
+      </div>
+
       <div class="preview-wrap">
-        <img id="preview" alt="Vista previa" class="preview-img"/>
+        <div class="preview-grid">
+          <div class="preview-card">
+            <h4>Tu archivo</h4>
+            <img id="preview" alt="Vista previa" class="preview-img"/>
+          </div>
+          <div class="preview-card" id="mockupWrap" style="display:none">
+            <h4>Mockup remera</h4>
+            <img id="mockupImg" alt="Mockup remera" class="preview-img"/>
+          </div>
+        </div>
       </div>
 
       <div class="actions span-2">

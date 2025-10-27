@@ -32,6 +32,11 @@ const fileFilter = (_req, file, cb) => {
   cb(ok ? null : new Error("Formato no permitido (png, jpg, webp)"), ok);
 };
 const upload = multer({ storage, fileFilter, limits: { fileSize: 8 * 1024 * 1024 } }); // 8MB
+const previewUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter,
+  limits: { fileSize: 8 * 1024 * 1024 }
+});
 
 async function ensureDesignerId(userId) {
   const q = await pool.query(`SELECT id FROM designers WHERE user_id=$1 LIMIT 1`, [userId]);
@@ -81,27 +86,46 @@ async function getRemeraMockupUrl(designId) {
   }
 }
 
-async function generateRemeraMockup(designId, designPath) {
+async function buildRemeraMockupBuffer(source) {
   try {
     await fs.promises.access(remeraTemplatePath);
-    const meta = await sharp(remeraTemplatePath).metadata();
-    const overlay = await sharp(designPath)
+    const templateMeta = await sharp(remeraTemplatePath).metadata();
+    const tplWidth = templateMeta.width || 1000;
+    const tplHeight = templateMeta.height || 1000;
+    const scaleRatio = 0.32;
+    const targetWidth = Math.round(tplWidth * scaleRatio);
+    const overlayBuffer = await sharp(source)
       .resize({
-        width: Math.round((meta.width || 1000) * 0.6),
-        height: Math.round((meta.height || 1000) * 0.6),
+        width: targetWidth,
         fit: "inside",
-        withoutEnlargement: true,
       })
       .png()
       .toBuffer();
 
+    const overlayMeta = await sharp(overlayBuffer).metadata();
+    const ovWidth = overlayMeta.width || 0;
+    const ovHeight = overlayMeta.height || 0;
+    const centeredLeft = Math.max(0, Math.round((tplWidth - ovWidth) / 2));
+    const centeredTop = Math.max(0, Math.round((tplHeight - ovHeight) / 2));
+    const upwardOffset = Math.round(tplHeight * 0.1);
+    const top = Math.max(0, centeredTop - upwardOffset);
+
+    return await sharp(remeraTemplatePath)
+      .composite([{ input: overlayBuffer, left: centeredLeft, top, blend: "multiply" }])
+      .jpeg({ quality: 90 })
+      .toBuffer();
+  } catch (err) {
+    throw err;
+  }
+}
+
+async function generateRemeraMockup(designId, designPath) {
+  try {
+    const buffer = await buildRemeraMockupBuffer(designPath);
     const outputFilename = `${designId}-remera.jpg`;
     const outputPath = path.join(mockupsDir, outputFilename);
 
-    await sharp(remeraTemplatePath)
-      .composite([{ input: overlay, gravity: "center" }])
-      .jpeg({ quality: 90 })
-      .toFile(outputPath);
+    await fs.promises.writeFile(outputPath, buffer);
 
     return `/img/uploads/mockups/${outputFilename}`;
   } catch (err) {
@@ -144,6 +168,35 @@ router.get("/featured", async (req, res) => {
 });
 
 /* ---------- Endpoints autenticados ---------- */
+
+router.post(
+  "/mockup-preview",
+  requireAuth,
+  (req, res, next) => {
+    previewUpload.single("image")(req, res, (err) => {
+      if (err) {
+        const message = err?.message || "Archivo inválido";
+        return res.status(400).json({ error: message });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
+      const buffer = await buildRemeraMockupBuffer(req.file.buffer);
+      const dataUrl = `data:image/jpeg;base64,${buffer.toString("base64")}`;
+      res.json({ mockup: dataUrl });
+    } catch (e) {
+      console.error("POST /designs/mockup-preview", e);
+      const msg = e?.message?.toLowerCase().includes("unsupported")
+        ? "Imagen inválida. Usá JPG, PNG o WEBP."
+        : "No se pudo generar el mockup";
+      const status = msg.startsWith("Imagen inválida") ? 400 : 500;
+      res.status(status).json({ error: msg });
+    }
+  }
+);
 
 // Mis diseños (del usuario logueado)
 router.get("/mine", requireAuth, async (req, res) => {
