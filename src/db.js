@@ -115,6 +115,9 @@ await pool.query(`
 
   -- Unicidad case-insensitive para username (opcional pero recomendado)
   CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username));
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS use_preference TEXT DEFAULT 'buy';
+  ALTER TABLE users ALTER COLUMN use_preference SET DEFAULT 'buy';
+  UPDATE users SET use_preference = COALESCE(use_preference, 'buy');
 `);
 
 

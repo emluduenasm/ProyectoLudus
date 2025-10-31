@@ -16,28 +16,17 @@
 
   if (me) {
     if (me.role === "admin") {
-      // Botón "Panel admin"
       const admin = document.createElement("a");
       admin.href = "/admin/users.html";
       admin.className = "btn btn-primary ui-slot";
       admin.innerHTML = `<i class="fa-solid fa-gauge"></i> Panel admin`;
       nav.appendChild(admin);
-
-      // Si hubiese enlaces estáticos a /upload.html en la página, los removemos:
-      document.querySelectorAll('a[href="/upload.html"]').forEach(a => a.remove());
     } else {
-      const mine = document.createElement("a");
-      mine.href = "/user-designs.html";
-      mine.className = "btn ui-slot";
-      mine.innerHTML = `<i class="fa-solid fa-rectangle-list"></i> Mis diseños`;
-      nav.appendChild(mine);
-
-      // Botón "Subir diseño" (solo NO-admin)
-      const up = document.createElement("a");
-      up.href = "/upload.html";
-      up.className = "btn btn-primary ui-slot";
-      up.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño`;
-      nav.appendChild(up);
+      const panel = document.createElement("a");
+      panel.href = "/user-designs.html";
+      panel.className = "btn btn-primary ui-slot";
+      panel.innerHTML = `<i class="fa-solid fa-table-columns"></i> Panel de usuario`;
+      nav.appendChild(panel);
     }
 
     // Hola, nombre (chip visible)

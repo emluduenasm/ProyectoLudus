@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Diseños · Ludus Stamps</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="/styles.css"/>
+  <style>
+    .gallery-hero{padding:40px 0 24px;text-align:center}
+    .gallery-hero h1{margin:0 0 12px;font-size:clamp(26px,4vw,36px);font-weight:800}
+    .gallery-hero p{margin:0;color:var(--muted);max-width:640px;margin-inline:auto}
+    .filters-card{background:#fff;padding:18px 20px;border-radius:var(--radius);box-shadow:var(--shadow-sm);display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;margin-bottom:28px}
+    .filters-card .field{display:flex;flex-direction:column;gap:6px;min-width:180px;flex:1}
+    .filters-card .field label{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+    .filters-card input[type="search"],
+    .filters-card select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #cbd5f5;background:#f8fafc;font-size:14px;color:var(--ink);transition:border .15s ease,box-shadow .15s ease}
+    .filters-card input[type="search"]:focus,
+    .filters-card select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(44,111,178,.18)}
+    .filters-card select:disabled{opacity:.65;cursor:not-allowed}
+    .filters-card .field.half{flex:0 1 150px}
+    .filters-card .meta{margin-left:auto;text-align:right;font-size:13px;color:var(--muted);min-width:160px}
+    #designs-grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+    .design-card{position:relative;background:#fff;border-radius:22px;box-shadow:0 14px 32px rgba(15,23,42,.08);overflow:hidden;display:flex;flex-direction:column;transition:transform .18s ease, box-shadow .2s ease}
+    .design-card:hover{transform:translateY(-4px);box-shadow:0 20px 40px rgba(15,23,42,.12)}
+    .design-card .thumb{position:relative;background:linear-gradient(180deg,#e2e8f0 0%,#cbd5f5 60%);aspect-ratio:4/3;overflow:hidden}
+    .design-card .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+    .design-card .body{padding:18px;display:flex;flex-direction:column;gap:12px}
+    .design-card h3{margin:0;font-size:17px;line-height:1.25}
+    .design-card .designer{display:flex;align-items:center;gap:6px;font-size:13px;color:#475569}
+    .design-card .meta{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#1e293b}
+    .design-card .meta span{display:inline-flex;align-items:center;gap:6px}
+    .design-card .badge{background:#eef2ff;color:#1e293b;font-weight:600;padding:4px 10px;border-radius:999px;font-size:12px}
+    .design-card .actions{margin-top:auto;display:flex;justify-content:flex-end;padding:0 18px 18px}
+    .design-card .actions span{font-size:14px;color:var(--brand);font-weight:600;display:inline-flex;align-items:center;gap:6px}
+    .design-card.skeleton{pointer-events:none;box-shadow:none;background:#f1f5f9;animation:pulse 1.3s ease-in-out infinite}
+    .design-card.skeleton .thumb{background:rgba(148,163,184,.35)}
+    .design-card.skeleton .thumb img{display:none}
+    .design-card.skeleton .body{gap:10px}
+    .design-card.skeleton h3,
+    .design-card.skeleton .designer,
+    .design-card.skeleton .meta span,
+    .design-card.skeleton .badge{background:rgba(148,163,184,.28);border-radius:10px;height:16px;margin:0}
+    .design-card.skeleton h3{height:20px;width:70%}
+    .design-card.skeleton .designer{width:60%}
+    .design-card.skeleton .meta span{width:80px}
+    .design-card.skeleton .badge{width:90px}
+    .design-card.skeleton .actions{display:none}
+    #designs-empty{display:none;padding:30px;text-align:center;color:var(--muted);background:#fff;border-radius:18px;box-shadow:var(--shadow-sm)}
+    #load-more-designs{display:none;margin-inline:auto}
+    @keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+    @media(max-width:720px){
+      .filters-card{flex-direction:column;align-items:stretch}
+      .filters-card .field,.filters-card .field.half{min-width:100%;flex:1}
+      .filters-card .meta{width:100%;text-align:left;margin:0}
+    }
+  </style>
+</head>
+<body class="designs-page">
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/">
+        <img src="/img/logo.png" alt="Logo"/>
+      </a>
+      <nav class="menu">
+        <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
+        <a href="/designers.html"><i class="fa-solid fa-users"></i> Diseñadores</a>
+        <a href="/designs.html" aria-current="page"><i class="fa-solid fa-palette"></i> Diseños</a>
+      </nav>
+      <div id="auth-actions"></div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="gallery-hero">
+      <h1>Galería de diseños</h1>
+      <p>Buscá inspiración entre todos los diseños publicados por la comunidad. Filtrá por categoría, popularidad o autor.</p>
+    </section>
+
+    <section class="gallery-results">
+      <form class="filters-card" id="designs-filters">
+        <div class="field">
+          <label for="design-search">Buscar diseño</label>
+          <input type="search" id="design-search" name="search" placeholder="Ej: bosque, sticker holográfico" autocomplete="off"/>
+        </div>
+        <div class="field half">
+          <label for="design-order">Ordenar por</label>
+          <select id="design-order" name="order">
+            <option value="popular">Popularidad</option>
+            <option value="newest">Más recientes</option>
+            <option value="oldest">Más antiguos</option>
+            <option value="alpha">Título (A–Z)</option>
+          </select>
+        </div>
+        <div class="field half">
+          <label for="design-category">Categoría</label>
+          <select id="design-category" name="category" disabled>
+            <option value="">Todas las categorías</option>
+          </select>
+        </div>
+        <div class="field half">
+          <label for="design-min-likes">Likes mínimos</label>
+          <select id="design-min-likes" name="min_likes">
+            <option value="0">Todos</option>
+            <option value="5">5+ likes</option>
+            <option value="10">10+ likes</option>
+            <option value="25">25+ likes</option>
+          </select>
+        </div>
+        <div class="field half">
+          <label for="design-designer">Alias de autor</label>
+          <input type="search" id="design-designer" name="designer" placeholder="Ej: @maria" autocomplete="off"/>
+        </div>
+        <div class="meta">
+          <div id="designs-total">Mostrando 0</div>
+          <div id="designs-active-filter" style="display:none">Filtrando resultados</div>
+        </div>
+      </form>
+
+      <div id="designs-empty">No encontramos diseños con esos filtros. Probá cambiarlos para ver más resultados.</div>
+      <div id="designs-grid" aria-live="polite" aria-busy="true"></div>
+      <button type="button" class="btn btn-outline" id="load-more-designs">
+        <i class="fa-solid fa-plus"></i> Cargar más
+      </button>
+    </section>
+  </main>
+
+  <footer class="site-footer" style="margin-top:48px">
+    <div class="container footer-grid">
+      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p><a class="link" href="#contacto">Contacto</a></p>
+    </div>
+  </footer>
+
+  <script src="/js/auth-ui.js" defer></script>
+  <script src="/js/designs.js" defer></script>
+</body>
+</html>

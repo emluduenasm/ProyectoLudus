@@ -36,13 +36,16 @@
   `;
 
   const designerCard = (u) => `
-    <a class="card" href="/designers.html#${encodeURIComponent(u.username || u.name || u.id)}">
+    <a class="card" href="/designer.html?alias=${encodeURIComponent(u.username || u.id)}">
       <div class="thumb">
-        <img src="${u.avatar_url || '/img/disenador1.jpg'}" alt="${u.display_name || u.username || 'diseñador'}" loading="lazy"/>
+        <img src="${u.avatar_url || '/img/uploads/avatars/default.png'}" alt="${u.username || 'diseñador'}" loading="lazy"/>
       </div>
       <div class="body">
-        <h3 class="title">${u.display_name || u.username || 'Diseñador'}</h3>
-        <div class="meta"><span class="muted">${u.designs_count ?? 0} diseños</span></div>
+        <h3 class="title">${u.username || 'Diseñador'}</h3>
+        <div class="meta">
+          <span class="muted">${u.designs_count ?? 0} diseños</span>
+          <span class="muted">${u.likes ?? 0} like${(u.likes ?? 0) === 1 ? "" : "s"}</span>
+        </div>
       </div>
     </a>
   `;

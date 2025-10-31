@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { ensureDesigner } from "../lib/designerService.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -37,20 +38,6 @@ const previewUpload = multer({
   fileFilter,
   limits: { fileSize: 8 * 1024 * 1024 }
 });
-
-async function ensureDesignerId(userId) {
-  const q = await pool.query(`SELECT id FROM designers WHERE user_id=$1 LIMIT 1`, [userId]);
-  if (q.rows[0]) return q.rows[0].id;
-
-  const info = await pool.query(`SELECT username, name FROM users WHERE id=$1`, [userId]);
-  const display = info.rows[0]?.username || info.rows[0]?.name || `Designer-${String(userId).slice(0,8)}`;
-  const ins = await pool.query(
-    `INSERT INTO designers (user_id, display_name, avatar_url)
-     VALUES ($1,$2,$3) RETURNING id`,
-    [userId, display, "/img/disenador1.jpg"]
-  );
-  return ins.rows[0].id;
-}
 
 async function resolveCategoryId(category_id, { strict = false } = {}) {
   // Si viene un UUID válido y existe/activa, úsalo; si no, usar “otros”
@@ -135,6 +122,188 @@ async function generateRemeraMockup(designId, designPath) {
 }
 
 /* ---------- Endpoints públicos ---------- */
+
+router.get("/", async (req, res) => {
+  try {
+    const searchRaw =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const orderRaw =
+      typeof req.query.order === "string"
+        ? req.query.order.trim().toLowerCase()
+        : "popular";
+    const categoryRaw =
+      typeof req.query.category === "string" ? req.query.category.trim() : "";
+    const designerRaw =
+      typeof req.query.designer === "string" ? req.query.designer.trim() : "";
+    const minLikesRaw =
+      req.query.min_likes ?? req.query.minLikes ?? req.query.likes;
+
+    const parsePositiveInt = (value, fallback) => {
+      const num = Number.parseInt(value, 10);
+      return Number.isFinite(num) && num >= 0 ? num : fallback;
+    };
+
+    const limit = Math.max(
+      1,
+      Math.min(parsePositiveInt(req.query.limit, 12), 60)
+    );
+    const page = Math.max(1, parsePositiveInt(req.query.page, 1));
+    const offset = (page - 1) * limit;
+    const minLikes = parsePositiveInt(minLikesRaw, 0);
+
+    let categoryId = "";
+    if (categoryRaw) {
+      if (/^[0-9a-fA-F-]{32,36}$/.test(categoryRaw)) {
+        categoryId = categoryRaw;
+      } else {
+        const lookup = await pool.query(
+          `SELECT id
+             FROM categories
+            WHERE LOWER(slug) = LOWER($1) OR LOWER(name) = LOWER($1)
+            LIMIT 1`,
+          [categoryRaw]
+        );
+        categoryId = lookup.rows[0]?.id ?? "";
+      }
+    }
+
+    const filters = [
+      "(d.published = TRUE OR COALESCE(d.review_status, 'pending') = 'approved')"
+    ];
+    const params = [];
+    const pushParam = (value) => {
+      params.push(value);
+      return params.length;
+    };
+
+    if (searchRaw) {
+      const idx = pushParam(`%${searchRaw.toLowerCase()}%`);
+      filters.push(
+        `(
+          LOWER(d.title) LIKE $${idx}
+          OR LOWER(COALESCE(d.description, '')) LIKE $${idx}
+          OR LOWER(COALESCE(NULLIF(TRIM(g.display_name), ''), u.username, u.name, '')) LIKE $${idx}
+        )`
+      );
+    }
+
+    if (categoryId) {
+      const idx = pushParam(categoryId);
+      filters.push(`d.category_id = $${idx}`);
+    }
+
+    if (designerRaw) {
+      const idx = pushParam(designerRaw.toLowerCase());
+      filters.push(
+        `(LOWER(u.username) = $${idx} OR LOWER(g.display_name) = $${idx} OR LOWER(u.name) = $${idx})`
+      );
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+
+    let havingClause = "";
+    if (minLikes > 0) {
+      const idx = pushParam(minLikes);
+      havingClause = `HAVING COUNT(l.user_id)::int >= $${idx}`;
+    }
+
+    let orderClause;
+    switch (orderRaw) {
+      case "newest":
+      case "recent":
+        orderClause = "ORDER BY d.created_at DESC";
+        break;
+      case "oldest":
+        orderClause = "ORDER BY d.created_at ASC";
+        break;
+      case "alpha":
+      case "alphabetical":
+      case "title":
+        orderClause = "ORDER BY d.title ASC";
+        break;
+      case "likes":
+      case "popular":
+      default:
+        orderClause =
+          "ORDER BY likes DESC, d.created_at DESC, d.title ASC";
+        break;
+    }
+
+    const baseQuery = `
+      FROM designs d
+      JOIN designers g ON g.id = d.designer_id
+      JOIN users u ON u.id = g.user_id
+      LEFT JOIN categories c ON c.id = d.category_id
+      LEFT JOIN design_likes l ON l.design_id = d.id
+      ${whereClause}
+      GROUP BY d.id, c.id, c.name, g.id, g.display_name, u.username, u.name
+      ${havingClause}
+    `;
+
+    const countQuery = `SELECT COUNT(*)::int AS total FROM (
+      SELECT d.id ${baseQuery}
+    ) AS counted`;
+    const countResult = await pool.query(countQuery, params);
+    const total = countResult.rows[0]?.total ?? 0;
+
+    const limitIdx = params.length + 1;
+    const offsetIdx = params.length + 2;
+
+    const dataQuery = `
+      SELECT
+        d.id,
+        d.title,
+        d.description,
+        d.image_url,
+        COALESCE(d.thumbnail_url, d.image_url) AS thumbnail_url,
+        d.created_at,
+        COALESCE(c.name, '') AS category_name,
+        c.id AS category_id,
+        COALESCE(NULLIF(TRIM(g.display_name), ''), u.username, u.name, 'Anónimo') AS designer_name,
+        u.username AS designer_username,
+        COUNT(l.user_id)::int AS likes
+      ${baseQuery}
+      ${orderClause}
+      LIMIT $${limitIdx}
+      OFFSET $${offsetIdx}
+    `;
+
+    const dataParams = [...params, limit, offset];
+    const { rows } = await pool.query(dataQuery, dataParams);
+
+    const designs = await Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description || "",
+        image_url: row.image_url,
+        thumbnail_url: row.thumbnail_url || row.image_url,
+        created_at: row.created_at,
+        category: {
+          id: row.category_id,
+          name: row.category_name || ""
+        },
+        designer: {
+          name: row.designer_name,
+          username: row.designer_username
+        },
+        likes: row.likes,
+        mockup_remera: await getRemeraMockupUrl(row.id)
+      }))
+    );
+
+    res.json({
+      page,
+      limit,
+      total,
+      total_pages: Math.ceil(total / limit),
+      designs
+    });
+  } catch (error) {
+    console.error("GET /designs", error);
+    res.status(500).json({ error: "No se pudieron obtener los diseños." });
+  }
+});
 
 // Diseños destacados por likes (incluye categoría)
 router.get("/featured", async (req, res) => {
@@ -239,7 +408,8 @@ router.post("/", requireAuth, upload.single("image"), async (req, res) => {
     const thumbPath = path.join(thumbsDir, thumbName);
     await sharp(srcPath).resize({ width: 600, withoutEnlargement: true }).toFile(thumbPath);
 
-    const designerId = await ensureDesignerId(req.user.id);
+    const designer = await ensureDesigner(req.user.id);
+    const designerId = designer.id;
     const imageUrl = `/img/uploads/${req.file.filename}`;
     const thumbUrl = `/img/uploads/thumbs/${thumbName}`;
 
