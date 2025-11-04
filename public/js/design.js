@@ -37,28 +37,49 @@
   }
 
   function render(d, liked=false, me=null) {
-    // Contenedor izquierdo alto fijo adaptable y la imagen llena el cuadro manteniendo proporciones
+    const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[ch] || ch));
+    const mockups = Array.isArray(d.mockups) ? d.mockups : [];
+    const mockupCards = mockups
+      .map(
+        (m) => `
+        <div class="media-card">
+          <h3>${esc(m.product_name || "Mockup")}</h3>
+          <img src="${m.image_url}" alt="Mockup ${esc(m.product_name || "producto")}" style="width:100%;object-fit:contain;border-radius:12px;" />
+        </div>`
+      )
+      .join("");
+
+    const hasMockups = Boolean(mockups.length);
+    const fallbackMockup = !hasMockups && d.mockup_remera
+      ? `<div class="media-card">
+           <h3>Mockup remera</h3>
+           <img src="${d.mockup_remera}" alt="Mockup remera de ${esc(d.title)}"
+                style="width:100%;object-fit:contain;border-radius:12px;" />
+         </div>`
+      : "";
+
     wrap.innerHTML = `
       <div class="detail-media">
         <div class="media-card">
           <h3>Diseño original</h3>
-          <img src="${d.image_url}" alt="${d.title}"
+          <img src="${d.image_url}" alt="${esc(d.title)}"
                style="width:100%;object-fit:contain;border-radius:12px;" />
         </div>
-        ${d.mockup_remera ? `
-        <div class="media-card">
-          <h3>Mockup remera</h3>
-          <img src="${d.mockup_remera}" alt="Mockup remera de ${d.title}"
-               style="width:100%;object-fit:contain;border-radius:12px;" />
-        </div>` : ""}
+        ${hasMockups ? mockupCards : fallbackMockup}
       </div>
 
       <aside class="meta">
         <div class="card" style="padding:1.5rem;">
-          <h1 style="margin-top:0">${d.title}</h1>
+          <h1 style="margin-top:0">${esc(d.title)}</h1>
           <div class="muted">
-            por <strong>${d.designer_name || "anónimo"}</strong>
-            ${d.category_name ? `<span class="badge">${d.category_name}</span>` : ""}
+            por <strong>${esc(d.designer_name || "anónimo")}</strong>
+            ${d.category_name ? `<span class="badge">${esc(d.category_name)}</span>` : ""}
           </div>
 
           <div class="likes" style="display:flex;align-items:center;gap:8px;margin-top:14px">
@@ -80,7 +101,7 @@
           <div style="margin-top:1.2rem;">
             <h3 style="margin-bottom:.5rem;">Descripción</h3>
             <p id="desc" style="color:#334155;white-space:pre-wrap;">
-              ${d.description ? d.description : "Este diseño aún no tiene descripción."}
+              ${d.description ? esc(d.description) : "Este diseño aún no tiene descripción."}
             </p>
           </div>
 

@@ -9,6 +9,9 @@ import designsRoutes from "./routes/designsRoutes.js";
 import designersRoutes from "./routes/designersRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import categoriesRoutes from "./routes/categoriesRoutes.js";
+import adminDesignsRoutes from "./routes/adminDesignsRoutes.js";
+import adminUsersRoutes from "./routes/adminUsersRoutes.js";
+import adminProductsRoutes from "./routes/adminProductsRoutes.js";
 import "./db.js"; // inicializa conexión y crea tablas si no existen
 
 
@@ -21,6 +24,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/designs", designsRoutes);
 app.use("/api/designers", designersRoutes);
 app.use("/api/categories", categoriesRoutes);
+app.use("/api/admin/designs", adminDesignsRoutes);
+app.use("/api/admin/users", adminUsersRoutes);
+app.use("/api/admin/products", adminProductsRoutes);
 
 // limitador solo para /api/auth/*
 app.use(

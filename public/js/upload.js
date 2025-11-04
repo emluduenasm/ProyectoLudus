@@ -6,8 +6,7 @@
   const sel = $("#selCategory");
   const file = $("#file");
   const preview = $("#preview");
-  const mockupWrap = $("#mockupWrap");
-  const mockupImg = $("#mockupImg");
+  const previewGrid = $("#previewGrid");
   const msg = $("#msg");
   const btn = $("#btnSave");
 
@@ -21,23 +20,44 @@
     msg.className = type;      // "muted" | "error" | "ok"
     msg.textContent = text || "";
   }
+  function clearMockupCards() {
+    if (!previewGrid) return;
+    previewGrid.querySelectorAll("[data-mockup-card]").forEach((card) => card.remove());
+  }
+
   function resetPreview() {
     if (preview) {
       preview.removeAttribute("src");
       preview.style.display = "none";
     }
-    if (mockupWrap) mockupWrap.style.display = "none";
-    if (mockupImg) {
-      mockupImg.removeAttribute("src");
-      mockupImg.style.display = "none";
-    }
+    clearMockupCards();
+  }
+
+  function renderMockupCards(items) {
+    clearMockupCards();
+    if (!previewGrid || !Array.isArray(items)) return;
+    items.forEach((item) => {
+      if (!item?.image) return;
+      const productName = item.product_name || "Mockup";
+      const card = document.createElement("div");
+      card.className = "preview-card";
+      card.dataset.mockupCard = "1";
+      const title = document.createElement("h4");
+      title.textContent = productName;
+      const img = document.createElement("img");
+      img.className = "preview-img";
+      img.src = item.image;
+      img.alt = `Mockup ${productName}`;
+      img.style.display = "block";
+      card.appendChild(title);
+      card.appendChild(img);
+      previewGrid.appendChild(card);
+    });
   }
 
   async function updateMockupPreview(file, seq) {
-    if (!mockupWrap || !mockupImg) return;
-    mockupWrap.style.display = "none";
-    mockupImg.removeAttribute("src");
-    mockupImg.style.display = "none";
+    if (!previewGrid) return;
+    clearMockupCards();
 
     const fd = new FormData();
     fd.append("image", file);
@@ -60,16 +80,14 @@
 
       if (seq !== previewSeq) return; // respuesta desactualizada
 
-      if (data?.mockup) {
-        mockupImg.src = data.mockup;
-        mockupImg.style.display = "block";
-        mockupWrap.style.display = "flex";
+      if (Array.isArray(data?.mockups)) {
+        renderMockupCards(data.mockups);
+      } else if (data?.mockup) {
+        renderMockupCards([{ product_name: "Mockup", image: data.mockup }]);
       }
     } catch (err) {
       if (seq === previewSeq) {
-        mockupWrap.style.display = "none";
-        mockupImg.removeAttribute("src");
-        mockupImg.style.display = "none";
+        clearMockupCards();
         showMsg("No se pudo generar la vista previa del mockup. Podés continuar con la carga.", "muted");
       }
     }

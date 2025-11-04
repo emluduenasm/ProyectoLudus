@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin · Productos</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="/styles.css"/>
+  <style>
+    .admin-wrap{max-width:1100px;margin:2rem auto;padding:1rem}
+    .toolbar{display:flex;gap:.75rem;align-items:center;margin-bottom:1rem}
+    .toolbar input[type="search"]{flex:1}
+    .toolbar .spacer{flex:1}
+    .filters{display:grid;grid-template-columns:1fr 160px 160px 120px;gap:.75rem;margin-bottom:1.2rem}
+    .filters label{font-size:.82rem;color:#64748b;margin-bottom:.25rem;display:block}
+    table{width:100%;border-collapse:separate;border-spacing:0 .5rem}
+    th,td{padding:.65rem .85rem;background:#fff}
+    th{color:#334155;text-align:left;font-size:.85rem;text-transform:uppercase;letter-spacing:.4px}
+    td:first-child,th:first-child{border-top-left-radius:12px;border-bottom-left-radius:12px}
+    td:last-child,th:last-child{border-top-right-radius:12px;border-bottom-right-radius:12px}
+    .product-thumb{width:64px;height:64px;border-radius:12px;object-fit:cover;background:#f1f5f9}
+    .muted-sm{color:#64748b;font-size:.85rem}
+    .status-pill{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .7rem;border-radius:999px;font-size:.78rem;font-weight:600}
+    .status-pill.published{background:#dcfce7;color:#166534}
+    .status-pill.unpublished{background:#fee2e2;color:#991b1b}
+    .actions{display:flex;gap:.5rem;flex-wrap:wrap}
+    .right{text-align:right}
+    .btn-danger{background:#dc2626;color:#fff}
+    .btn-danger:hover{filter:brightness(.95)}
+    .price{font-weight:600}
+    dialog{border:none;border-radius:18px;padding:0;box-shadow:0 18px 36px rgba(15,23,42,.2)}
+    dialog::backdrop{background:rgba(15,23,42,.32)}
+    .modal-card{padding:1.4rem;max-width:min(560px,92vw)}
+    .modal-grid{display:grid;gap:1rem}
+    .modal-grid label{display:flex;flex-direction:column;gap:.4rem;font-size:.92rem}
+    .modal-grid input,
+    .modal-grid textarea,
+    .modal-grid select{font:inherit;padding:.65rem .75rem;border-radius:10px;border:1.5px solid #cbd5f5;background:#f8fafc}
+    .modal-grid textarea{resize:vertical;min-height:120px}
+    .image-field{display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap}
+    .image-field img{width:150px;height:150px;border-radius:14px;object-fit:cover;background:#f1f5f9;display:none}
+    .image-field .hint{font-size:.8rem;color:#64748b}
+    .mockup-preview{display:flex;flex-direction:column;gap:.75rem;flex:1;min-width:240px}
+    .mockup-canvas{position:relative;width:100%;padding-top:100%;background:#f1f5f9;border-radius:14px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(148,163,184,.25)}
+    .mockup-canvas img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+    .mockup-overlay{position:absolute;border:2px dashed rgba(37,99,235,.7);background:rgba(37,99,235,.25);border-radius:10px;pointer-events:none;display:none}
+    .mockup-controls{display:grid;gap:.6rem}
+    .mockup-controls label{font-size:.82rem;color:#475569;display:flex;flex-direction:column;gap:.35rem}
+    .mockup-controls output{font-weight:600;color:#1e293b}
+    .switch{appearance:none;width:44px;height:24px;background:#e2e8f0;border-radius:999px;position:relative;outline:none;cursor:pointer}
+    .switch:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s ease}
+    .switch:checked{background:#2563eb}
+    .switch:checked:after{transform:translateX(18px)}
+    .empty-state{display:none;padding:1.5rem;text-align:center;background:#fff;border-radius:14px;box-shadow:var(--shadow-sm)}
+    @media(max-width:720px){
+      .filters{grid-template-columns:1fr 1fr}
+      .toolbar{flex-direction:column;align-items:stretch}
+      .toolbar .spacer{display:none}
+      .actions{justify-content:flex-start}
+      .image-field{flex-direction:column;align-items:flex-start}
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/"><img src="/img/logo.png" alt="Logo"/></a>
+      <nav class="menu">
+        <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
+        <a href="/upload.html"><i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="admin-wrap">
+    <h1>Panel admin · Productos</h1>
+
+    <nav class="admin-subnav">
+      <a href="/admin/designs.html" class="tab"><i class="fa-solid fa-palette"></i> Diseños</a>
+      <a href="/admin/users.html" class="tab"><i class="fa-solid fa-users-gear"></i> Usuarios</a>
+      <a href="/admin/products.html" class="tab active"><i class="fa-solid fa-store"></i> Productos</a>
+    </nav>
+
+    <div class="toolbar">
+      <input id="q" type="search" class="input" placeholder="Buscar por nombre o descripción…"/>
+      <button id="btnSearch" class="btn"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
+      <span id="resultInfo" class="muted-sm spacer"></span>
+      <button id="btnNew" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Nuevo producto</button>
+    </div>
+
+    <div class="filters">
+      <label>Publicado
+        <select id="fPublished" class="input">
+          <option value="">Todos</option>
+          <option value="1">Sí</option>
+          <option value="0">No</option>
+        </select>
+      </label>
+      <label>Ordenar por
+        <select id="fSort" class="input">
+          <option value="newest">Más nuevos</option>
+          <option value="oldest">Más antiguos</option>
+          <option value="price_desc">Precio ↓</option>
+          <option value="price_asc">Precio ↑</option>
+          <option value="stock_desc">Stock ↓</option>
+          <option value="stock_asc">Stock ↑</option>
+          <option value="name_asc">Nombre A–Z</option>
+        </select>
+      </label>
+      <label>Por página
+        <select id="fLimit" class="input">
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="30">30</option>
+        </select>
+      </label>
+      <label>&nbsp;
+        <button id="btnClear" class="btn btn-outline" type="button"><i class="fa-solid fa-eraser"></i> Limpiar</button>
+      </label>
+    </div>
+
+    <div class="empty-state" id="emptyState">
+      <p>No hay productos que coincidan con los filtros.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th>Precio</th>
+            <th>Stock</th>
+            <th>Publicado</th>
+            <th>Actualizado</th>
+            <th class="right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="pagination">
+      <button id="prev" class="btn">←</button>
+      <span id="pageInfo" class="muted-sm"></span>
+      <button id="next" class="btn">→</button>
+    </div>
+
+    <dialog id="modal">
+      <form id="formProduct" class="modal-card modal-grid" method="dialog" novalidate>
+        <h2 id="modalTitle" style="margin:0">Producto</h2>
+        <input type="hidden" name="id"/>
+        <label>Nombre
+          <input name="name" required minlength="3" placeholder="Ej: Taza metálica"/>
+        </label>
+        <label>Descripción
+          <textarea name="description" placeholder="Detalles del producto"></textarea>
+        </label>
+        <label>Precio (ARS)
+          <input name="price" type="number" min="0" step="0.01" placeholder="0.00" required/>
+        </label>
+        <label>Stock disponible
+          <input name="stock" type="number" min="0" step="1" required/>
+        </label>
+        <div class="image-field">
+          <div class="mockup-preview">
+            <div class="mockup-canvas" id="mockup-canvas">
+              <img id="preview" src="" alt="Vista previa" />
+              <div class="mockup-overlay" id="mockup-overlay"></div>
+            </div>
+          </div>
+          <div class="mockup-controls" id="mockup-controls">
+            <label style="font-weight:600">Imagen principal
+              <input type="file" id="file" name="image" accept="image/png,image/jpeg,image/webp"/>
+            </label>
+            <div class="hint">PNG, JPG o WEBP (máx 6MB). Si dejás vacío el campo al crear, se utilizará un marcador.</div>
+            <label>Ancho (%) <output id="mockup-width-value">45%</output>
+              <input type="range" id="mockup-width" min="5" max="90" value="45" step="1" />
+            </label>
+            <label>Alto (%) <output id="mockup-height-value">45%</output>
+              <input type="range" id="mockup-height" min="5" max="90" value="45" step="1" />
+            </label>
+            <label>Posición horizontal (%) <output id="mockup-left-value">50%</output>
+              <input type="range" id="mockup-left" min="0" max="95" value="50" step="1" />
+            </label>
+            <label>Posición vertical (%) <output id="mockup-top-value">18%</output>
+              <input type="range" id="mockup-top" min="0" max="95" value="18" step="1" />
+            </label>
+          </div>
+        </div>
+        <label style="flex-direction:row;align-items:center;gap:.6rem">
+          <input type="checkbox" class="switch" name="published"/> Publicado
+        </label>
+        <div id="formMsg" class="muted-sm" style="min-height:1.2rem"></div>
+        <div style="display:flex;gap:.75rem;justify-content:flex-end">
+          <button type="button" id="btnCancel" class="btn btn-outline">Cancelar</button>
+          <button class="btn btn-primary" id="btnSubmit"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p><a class="link" href="#contacto">Contacto</a></p>
+    </div>
+  </footer>
+
+  <script src="/js/auth-ui.js" defer></script>
+  <script src="/js/admin-products.js" defer></script>
+</body>
+</html>

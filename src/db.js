@@ -54,6 +54,58 @@ const bootstrap = async () => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS products (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      price NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (price >= 0),
+      stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+      image_url TEXT,
+      published BOOLEAN NOT NULL DEFAULT false,
+      mockup_config JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS products_published_idx ON products (published);
+  `);
+  await pool.query(`
+    ALTER TABLE products
+    ADD COLUMN IF NOT EXISTS mockup_config JSONB;
+  `);
+  await pool.query(`
+    UPDATE products
+       SET mockup_config = jsonb_build_object(
+         'width_pct', 0.45,
+         'height_pct', 0.45,
+         'top_pct', 0.18,
+         'left_pct', 0.5,
+         'blend', 'multiply'
+       )
+     WHERE mockup_config IS NULL;
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS design_product_mockups (
+      design_id UUID REFERENCES designs(id) ON DELETE CASCADE,
+      product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+      image_url TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (design_id, product_id)
+    );
+  `);
+  await pool.query(`
+    INSERT INTO products (name, description, price, stock, image_url, published, mockup_config)
+    SELECT 'Remera básica',
+           'Remera blanca lista para personalizar con tus diseños.',
+           14999,
+           25,
+           '/img/productos/producto-remera.jpg',
+           TRUE,
+           jsonb_build_object('width_pct',0.45,'height_pct',0.45,'top_pct',0.18,'left_pct',0.5,'blend','multiply')
+    WHERE NOT EXISTS (
+      SELECT 1 FROM products WHERE LOWER(name) = 'remera básica'
+    );
+  `);
 
     // columnas adicionales que pudieron faltar en instalaciones anteriores
   await pool.query(`

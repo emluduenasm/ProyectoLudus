@@ -7,17 +7,20 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import sharp from "sharp";
+import {
+  generateProductMockups,
+  previewProductMockups,
+  getDesignMockups,
+  deleteDesignMockups
+} from "../lib/mockupService.js";
 
 const router = Router();
 
 /* ---------- Paths y helpers ---------- */
 const uploadsDir = path.join(process.cwd(), "public", "img", "uploads");
 const thumbsDir  = path.join(uploadsDir, "thumbs");
-const mockupsDir = path.join(uploadsDir, "mockups");
-const productosDir = path.join(process.cwd(), "public", "img", "productos");
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(thumbsDir,  { recursive: true });
-fs.mkdirSync(mockupsDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -56,70 +59,6 @@ async function removeFileIfExists(filePathAbs) {
   } catch {}
 }
 
-const remeraTemplatePath = path.join(productosDir, "producto-remera.jpg");
-
-async function removeRemeraMockup(designId) {
-  const filename = `${designId}-remera.jpg`;
-  await removeFileIfExists(path.join(mockupsDir, filename));
-}
-
-async function getRemeraMockupUrl(designId) {
-  const filename = `${designId}-remera.jpg`;
-  try {
-    await fs.promises.access(path.join(mockupsDir, filename));
-    return `/img/uploads/mockups/${filename}`;
-  } catch {
-    return null;
-  }
-}
-
-async function buildRemeraMockupBuffer(source) {
-  try {
-    await fs.promises.access(remeraTemplatePath);
-    const templateMeta = await sharp(remeraTemplatePath).metadata();
-    const tplWidth = templateMeta.width || 1000;
-    const tplHeight = templateMeta.height || 1000;
-    const scaleRatio = 0.32;
-    const targetWidth = Math.round(tplWidth * scaleRatio);
-    const overlayBuffer = await sharp(source)
-      .resize({
-        width: targetWidth,
-        fit: "inside",
-      })
-      .png()
-      .toBuffer();
-
-    const overlayMeta = await sharp(overlayBuffer).metadata();
-    const ovWidth = overlayMeta.width || 0;
-    const ovHeight = overlayMeta.height || 0;
-    const centeredLeft = Math.max(0, Math.round((tplWidth - ovWidth) / 2));
-    const centeredTop = Math.max(0, Math.round((tplHeight - ovHeight) / 2));
-    const upwardOffset = Math.round(tplHeight * 0.1);
-    const top = Math.max(0, centeredTop - upwardOffset);
-
-    return await sharp(remeraTemplatePath)
-      .composite([{ input: overlayBuffer, left: centeredLeft, top, blend: "multiply" }])
-      .jpeg({ quality: 90 })
-      .toBuffer();
-  } catch (err) {
-    throw err;
-  }
-}
-
-async function generateRemeraMockup(designId, designPath) {
-  try {
-    const buffer = await buildRemeraMockupBuffer(designPath);
-    const outputFilename = `${designId}-remera.jpg`;
-    const outputPath = path.join(mockupsDir, outputFilename);
-
-    await fs.promises.writeFile(outputPath, buffer);
-
-    return `/img/uploads/mockups/${outputFilename}`;
-  } catch (err) {
-    console.error("Mockup remera error", err?.message || err);
-    return null;
-  }
-}
 
 /* ---------- Endpoints públicos ---------- */
 
@@ -271,8 +210,15 @@ router.get("/", async (req, res) => {
     const dataParams = [...params, limit, offset];
     const { rows } = await pool.query(dataQuery, dataParams);
 
-    const designs = await Promise.all(
-      rows.map(async (row) => ({
+    const ids = rows.map((row) => row.id);
+    const mockupMap = await getDesignMockups(ids);
+
+    const designs = rows.map((row) => {
+      const mockups = mockupMap.get(row.id) || [];
+      const remera = mockups.find((m) =>
+        (m.product_name || "").toLowerCase().includes("remera")
+      );
+      return {
         id: row.id,
         title: row.title,
         description: row.description || "",
@@ -288,9 +234,10 @@ router.get("/", async (req, res) => {
           username: row.designer_username
         },
         likes: row.likes,
-        mockup_remera: await getRemeraMockupUrl(row.id)
-      }))
-    );
+        mockups,
+        mockup_remera: (remera || mockups[0] || {}).image_url || null
+      };
+    });
 
     res.json({
       page,
@@ -325,10 +272,18 @@ router.get("/featured", async (req, res) => {
        LIMIT $1`,
       [limit]
     );
-    const withMockup = await Promise.all(rows.map(async (row) => ({
-      ...row,
-      mockup_remera: await getRemeraMockupUrl(row.id)
-    })));
+    const mockupMap = await getDesignMockups(rows.map((row) => row.id));
+    const withMockup = rows.map((row) => {
+      const mockups = mockupMap.get(row.id) || [];
+      const remera = mockups.find((m) =>
+        (m.product_name || "").toLowerCase().includes("remera")
+      );
+      return {
+        ...row,
+        mockups,
+        mockup_remera: (remera || mockups[0] || {}).image_url || null
+      };
+    });
     res.json(withMockup);
   } catch (e) {
     console.error(e);
@@ -353,9 +308,11 @@ router.post(
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
-      const buffer = await buildRemeraMockupBuffer(req.file.buffer);
-      const dataUrl = `data:image/jpeg;base64,${buffer.toString("base64")}`;
-      res.json({ mockup: dataUrl });
+      const previews = await previewProductMockups(req.file.buffer);
+      res.json({
+        mockup: previews[0]?.image ?? null,
+        mockups: previews
+      });
     } catch (e) {
       console.error("POST /designs/mockup-preview", e);
       const msg = e?.message?.toLowerCase().includes("unsupported")
@@ -386,7 +343,21 @@ router.get("/mine", requireAuth, async (req, res) => {
        ORDER BY d.created_at DESC`,
       [userId]
     );
-    res.json(rows);
+    const ids = rows.map((row) => row.id);
+    const mockupMap = await getDesignMockups(ids);
+    const enriched = rows.map((row) => {
+      const mockups = mockupMap.get(row.id) || [];
+      const remera =
+        mockups.find((m) => (m.product_name || "").toLowerCase().includes("remera")) ||
+        mockups[0] ||
+        null;
+      return {
+        ...row,
+        mockups,
+        mockup_remera: remera ? remera.image_url : null
+      };
+    });
+    res.json(enriched);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "No se pudieron cargar tus diseños" });
@@ -422,10 +393,15 @@ router.post("/", requireAuth, upload.single("image"), async (req, res) => {
       [designerId, title.trim(), (description || "").trim(), imageUrl, thumbUrl, category_id]
     );
     const design = ins.rows[0];
-    const mockup = await generateRemeraMockup(design.id, srcPath);
+    const mockups = await generateProductMockups(design.id, srcPath);
+    const mockupRemera =
+      mockups.find((m) => (m.product_name || "").toLowerCase().includes("remera")) ||
+      mockups[0] ||
+      null;
     res.status(201).json({
       ...design,
-      mockup_remera: mockup,
+      mockups,
+      mockup_remera: mockupRemera ? mockupRemera.image_url : null,
       message: "Diseño recibido. Quedó en revisión del equipo antes de publicarse."
     });
   } catch (e) {
@@ -505,6 +481,12 @@ router.patch("/:id", requireAuth, async (req, res) => {
     }
 
     if (!fields.length) {
+      const mockupsMap = await getDesignMockups([id]);
+      const mockups = mockupsMap.get(id) || [];
+      const remera =
+        mockups.find((m) => (m.product_name || "").toLowerCase().includes("remera")) ||
+        mockups[0] ||
+        null;
       return res.json({
         id,
         title: current.title,
@@ -514,7 +496,8 @@ router.patch("/:id", requireAuth, async (req, res) => {
         published: current.published,
         image_url: current.image_url,
         thumbnail_url: current.thumbnail_url,
-        mockup_remera: await getRemeraMockupUrl(id)
+        mockups,
+        mockup_remera: remera ? remera.image_url : null
       });
     }
 
@@ -528,7 +511,17 @@ router.patch("/:id", requireAuth, async (req, res) => {
       values
     );
     const updatedDesign = updated.rows[0];
-    res.json({ ...updatedDesign, mockup_remera: await getRemeraMockupUrl(id) });
+    const mockupsMap = await getDesignMockups([id]);
+    const mockups = mockupsMap.get(id) || [];
+    const remera =
+      mockups.find((m) => (m.product_name || "").toLowerCase().includes("remera")) ||
+      mockups[0] ||
+      null;
+    res.json({
+      ...updatedDesign,
+      mockups,
+      mockup_remera: remera ? remera.image_url : null
+    });
   } catch (e) {
     console.error("PATCH /designs/:id", e);
     res.status(500).json({ error: "No se pudo actualizar el diseño" });
@@ -578,10 +571,20 @@ router.put("/:id/image", requireAuth, upload.single("image"), async (req, res) =
        RETURNING id, image_url, thumbnail_url, review_status, published, title, description, category_id, created_at`,
       [imageUrl, thumbUrl, id]
     );
-    await removeRemeraMockup(id);
-    const mockup = await generateRemeraMockup(id, srcPath);
+    const mockups = await generateProductMockups(id, srcPath);
+    const remera =
+      mockups.find((m) => (m.product_name || "").toLowerCase().includes("remera")) ||
+      mockups[0] ||
+      null;
 
-    res.json({ ...upd.rows[0], mockup_remera: mockup });
+    const legacyPath = path.join(process.cwd(), "public", "img", "uploads", "mockups", `${id}-remera.jpg`);
+    await removeFileIfExists(legacyPath);
+
+    res.json({
+      ...upd.rows[0],
+      mockups,
+      mockup_remera: remera ? remera.image_url : null
+    });
   } catch (e) {
     console.error("PUT /designs/:id/image", e);
     res.status(500).json({ error: "No se pudo reemplazar la imagen" });
@@ -604,8 +607,10 @@ router.delete("/:id", requireAuth, async (req, res) => {
     if (!find.rowCount) return res.status(404).json({ error: "Diseño no encontrado" });
 
     await pool.query(`DELETE FROM design_likes WHERE design_id=$1`, [id]);
+    await deleteDesignMockups(id);
     await pool.query(`DELETE FROM designs WHERE id=$1`, [id]);
-    await removeRemeraMockup(id);
+    const legacyPath = path.join(process.cwd(), "public", "img", "uploads", "mockups", `${id}-remera.jpg`);
+    await removeFileIfExists(legacyPath);
 
     for (const url of [find.rows[0].image_url, find.rows[0].thumbnail_url]) {
       if (!url) continue;
@@ -641,7 +646,17 @@ router.get("/:id", async (req, res) => {
       [id]
     );
     if (!q.rows.length) return res.status(404).json({ error: "Diseño no encontrado" });
-    res.json({ ...q.rows[0], mockup_remera: await getRemeraMockupUrl(id) });
+    const mockupsMap = await getDesignMockups([id]);
+    const mockups = mockupsMap.get(id) || [];
+    const remera =
+      mockups.find((m) => (m.product_name || "").toLowerCase().includes("remera")) ||
+      mockups[0] ||
+      null;
+    res.json({
+      ...q.rows[0],
+      mockups,
+      mockup_remera: remera ? remera.image_url : null
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Error al obtener el diseño" });

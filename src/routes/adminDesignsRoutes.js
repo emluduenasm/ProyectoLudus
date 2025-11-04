@@ -6,15 +6,17 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import sharp from "sharp";
+import {
+  generateProductMockups,
+  deleteDesignMockups,
+  getDesignMockups
+} from "../lib/mockupService.js";
 
 const router = Router();
 const uploadsDir = path.join(process.cwd(), "public", "img", "uploads");
 const thumbsDir  = path.join(uploadsDir, "thumbs");
-const mockupsDir = path.join(uploadsDir, "mockups");
-const productosDir = path.join(process.cwd(), "public", "img", "productos");
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(thumbsDir,  { recursive: true });
-fs.mkdirSync(mockupsDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -34,42 +36,6 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: 8 * 1024 * 1024
 const onlyAdmin = [requireAuth, requireRole("admin")];
 
 async function removeFileIfExists(filePathAbs) { try { await fs.promises.unlink(filePathAbs); } catch {} }
-
-const remeraTemplatePath = path.join(productosDir, "producto-remera.jpg");
-
-async function removeRemeraMockup(designId) {
-  const filename = `${designId}-remera.jpg`;
-  await removeFileIfExists(path.join(mockupsDir, filename));
-}
-
-async function generateRemeraMockup(designId, designPath) {
-  try {
-    await fs.promises.access(remeraTemplatePath);
-    const meta = await sharp(remeraTemplatePath).metadata();
-    const overlay = await sharp(designPath)
-      .resize({
-        width: Math.round((meta.width || 1000) * 0.6),
-        height: Math.round((meta.height || 1000) * 0.6),
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .png()
-      .toBuffer();
-
-    const outputFilename = `${designId}-remera.jpg`;
-    const outputPath = path.join(mockupsDir, outputFilename);
-
-    await sharp(remeraTemplatePath)
-      .composite([{ input: overlay, gravity: "center" }])
-      .jpeg({ quality: 90 })
-      .toFile(outputPath);
-
-    return `/img/uploads/mockups/${outputFilename}`;
-  } catch (err) {
-    console.error("ADMIN mockup remera", err?.message || err);
-    return null;
-  }
-}
 
 /* ------- LIST (búsqueda + filtros + orden + paginación) ------- */
 router.get("/", ...onlyAdmin, async (req, res) => {
@@ -229,7 +195,17 @@ router.patch("/:id", ...onlyAdmin, async (req, res) => {
       values
     );
     if (!upd.rows.length) return res.status(404).json({ error: "Diseño no encontrado" });
-    res.json(upd.rows[0]);
+    const mockupMap = await getDesignMockups([id]);
+    const mockups = mockupMap.get(id) || [];
+    const remera =
+      mockups.find((m) => (m.product_name || "").toLowerCase().includes("remera")) ||
+      mockups[0] ||
+      null;
+    res.json({
+      ...upd.rows[0],
+      mockups,
+      mockup_remera: remera ? remera.image_url : null
+    });
   } catch (e) {
     console.error("ADMIN designs patch", e);
     res.status(500).json({ error: "No se pudo actualizar" });
@@ -270,9 +246,18 @@ router.put("/:id/image", ...onlyAdmin, upload.single("image"), async (req, res) 
        WHERE id=$3 RETURNING *`,
       [imageUrl, thumbUrl, id]
     );
-    await removeRemeraMockup(id);
-    const mockup = await generateRemeraMockup(id, srcPath);
-    res.json({ ...upd.rows[0], mockup_remera: mockup });
+    const mockups = await generateProductMockups(id, srcPath);
+    const remera =
+      mockups.find((m) => (m.product_name || "").toLowerCase().includes("remera")) ||
+      mockups[0] ||
+      null;
+    const legacyPath = path.join(process.cwd(), "public", "img", "uploads", "mockups", `${id}-remera.jpg`);
+    await removeFileIfExists(legacyPath);
+    res.json({
+      ...upd.rows[0],
+      mockups,
+      mockup_remera: remera ? remera.image_url : null
+    });
   } catch (e) {
     console.error("ADMIN designs replace image", e);
     res.status(500).json({ error: "No se pudo reemplazar la imagen" });
@@ -287,8 +272,8 @@ router.delete("/:id", ...onlyAdmin, async (req, res) => {
     if (!find.rows.length) return res.status(404).json({ error: "Diseño no encontrado" });
 
     await pool.query(`DELETE FROM design_likes WHERE design_id=$1`, [id]);
+    await deleteDesignMockups(id);
     await pool.query(`DELETE FROM designs WHERE id=$1`, [id]);
-    await removeRemeraMockup(id);
 
     for (const url of [find.rows[0].image_url, find.rows[0].thumbnail_url]) {
       if (!url) continue;
