@@ -8,14 +8,23 @@
   <link rel="stylesheet" href="/styles.css"/>
   <style>
     .container{max-width:1100px;margin:0 auto;padding:0 16px}
-    .detail{display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:24px 0}
-    @media (max-width:900px){.detail{grid-template-columns:1fr}}
+    .detail{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px;padding:24px 0}
     .badge{display:inline-block;background:#eef2ff;color:#312e81;border-radius:999px;padding:3px 10px;font-size:12px;margin-left:6px}
     .muted{color:#64748b}
-    .detail-media{display:flex;flex-direction:column;gap:18px}
-    .media-card{background:#f8fafc;border-radius:16px;padding:1rem;display:flex;flex-direction:column;gap:.75rem;align-items:center}
-    .media-card h3{margin:0;font-size:1rem;color:#334155}
-    .media-card img{width:100%;max-height:520px;object-fit:contain;border-radius:12px;background:#fff}
+    .detail-hero{grid-column:1/-1;background:#fff;border-radius:20px;padding:1.5rem;display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:1.5rem;align-items:start;box-shadow:0 16px 36px rgba(15,23,42,.08)}
+    .hero-image{background:#f8fafc;border-radius:16px;padding:1rem;display:flex;align-items:center;justify-content:center}
+    .hero-image img{width:100%;max-height:520px;object-fit:contain;border-radius:12px;background:#fff}
+    .hero-meta{display:flex;flex-direction:column;gap:.75rem}
+    .detail-media{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px;align-items:start}
+    .media-card{background:#f8fafc;border-radius:16px;padding:1rem;display:flex;flex-direction:column;gap:.65rem;align-items:center;text-align:center;box-shadow:0 8px 18px rgba(15,23,42,.08)}
+    .media-card img{width:100%;max-height:420px;object-fit:contain;border-radius:12px;background:#fff}
+    .media-card-body{width:100%;display:flex;flex-direction:column;gap:.25rem;align-items:center}
+    .media-card-body h3{margin:.25rem 0;font-size:1rem;color:#0f172a}
+    .media-price{margin:0;color:#0f172a;font-weight:600;font-size:.95rem}
+    .media-card-body .btn{width:100%; justify-content:center}
+    @media (max-width:900px){
+      .detail-hero{grid-template-columns:1fr}
+    }
   </style>
 </head>
 <body>

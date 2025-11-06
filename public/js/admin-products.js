@@ -149,15 +149,8 @@ function normalizeLocalConfig(cfg = {}) {
     0.9,
     Number.isFinite(base.height_pct) ? base.height_pct : width
   );
-  let left = clamp(base.left_pct, 0, 1, DEFAULT_MOCKUP.left_pct);
-  let top = clamp(base.top_pct, 0, 1, DEFAULT_MOCKUP.top_pct);
-
-  const halfWidth = width / 2;
-  const halfHeight = height / 2;
-  if (left < halfWidth) left = halfWidth;
-  if (left > 1 - halfWidth) left = 1 - halfWidth;
-  if (top < halfHeight) top = halfHeight;
-  if (top > 1 - halfHeight) top = 1 - halfHeight;
+  const left = clamp(base.left_pct, 0, 1, DEFAULT_MOCKUP.left_pct);
+  const top = clamp(base.top_pct, 0, 1, DEFAULT_MOCKUP.top_pct);
 
   return {
     width_pct: width,
@@ -178,10 +171,8 @@ function updateOverlayDisplay() {
   const topPercent = (currentMockup.top_pct - currentMockup.height_pct / 2) * 100;
   overlayEl.style.width = `${widthPercent.toFixed(2)}%`;
   overlayEl.style.height = `${heightPercent.toFixed(2)}%`;
-  const clampedLeft = Math.min(100 - widthPercent, Math.max(0, leftPercent));
-  const clampedTop = Math.min(100 - heightPercent, Math.max(0, topPercent));
-  overlayEl.style.left = `${clampedLeft.toFixed(2)}%`;
-  overlayEl.style.top = `${clampedTop.toFixed(2)}%`;
+  overlayEl.style.left = `${leftPercent.toFixed(2)}%`;
+  overlayEl.style.top = `${topPercent.toFixed(2)}%`;
 }
 
 function syncMockupInputs() {
@@ -194,13 +185,10 @@ function syncMockupInputs() {
   widthInput.value = String(widthValue);
   heightInput.value = String(heightValue);
 
-  const halfWidth = widthValue / 2;
-  const halfHeight = heightValue / 2;
-
-  leftInput.min = String(Math.round(halfWidth));
-  leftInput.max = String(Math.round(100 - halfWidth));
-  topInput.min = String(Math.round(halfHeight));
-  topInput.max = String(Math.round(100 - halfHeight));
+  leftInput.min = "0";
+  leftInput.max = "100";
+  topInput.min = "0";
+  topInput.max = "100";
 
   leftInput.value = String(Math.round(currentMockup.left_pct * 100));
   topInput.value = String(Math.round(currentMockup.top_pct * 100));
@@ -221,15 +209,8 @@ function handleRangeChange() {
   if (!widthInput || !heightInput || !leftInput || !topInput) return;
   const width = clamp(Number(widthInput.value) / 100, 0.05, 0.9, currentMockup.width_pct);
   const height = clamp(Number(heightInput.value) / 100, 0.05, 0.9, currentMockup.height_pct);
-  let left = clamp(Number(leftInput.value) / 100, 0, 1, currentMockup.left_pct);
-  let top = clamp(Number(topInput.value) / 100, 0, 1, currentMockup.top_pct);
-
-  const halfWidth = width / 2;
-  const halfHeight = height / 2;
-  if (left < halfWidth) left = halfWidth;
-  if (left > 1 - halfWidth) left = 1 - halfWidth;
-  if (top < halfHeight) top = halfHeight;
-  if (top > 1 - halfHeight) top = 1 - halfHeight;
+  const left = clamp(Number(leftInput.value) / 100, 0, 1, currentMockup.left_pct);
+  const top = clamp(Number(topInput.value) / 100, 0, 1, currentMockup.top_pct);
 
   currentMockup = normalizeLocalConfig({ width_pct: width, height_pct: height, left_pct: left, top_pct: top });
   syncMockupInputs();

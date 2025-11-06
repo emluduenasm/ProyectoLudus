@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Carrito · Ludus Stamps</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="/styles.css"/>
+  <style>
+    main{padding:24px 0 60px}
+    h1{margin-bottom:1rem}
+    .cart-shell{background:#fff;border-radius:20px;padding:1.5rem;box-shadow:0 16px 32px rgba(15,23,42,.08);display:flex;flex-direction:column;gap:1.2rem}
+    .cart-empty{color:#94a3b8;margin:1rem 0}
+    .cart-list{display:flex;flex-direction:column;gap:1rem}
+    .cart-item{display:grid;grid-template-columns:auto 1fr auto;gap:1rem;align-items:center;border:1px solid #e2e8f0;border-radius:16px;padding:1rem}
+    .cart-thumb{width:86px;height:86px;border-radius:14px;object-fit:cover;background:#f1f5f9}
+    .cart-item h3{margin:0;font-size:1rem;color:#0f172a}
+    .cart-meta{color:#64748b;font-size:.9rem;margin:.25rem 0 .4rem}
+    .cart-price{font-weight:600;color:#0f172a}
+    .cart-qty{display:flex;align-items:center;gap:.35rem}
+    .cart-qty button{width:34px;height:34px;border:none;border-radius:10px;background:#e2e8f0;color:#0f172a;font-size:1.1rem;cursor:pointer}
+    .cart-qty span{min-width:28px;text-align:center;font-weight:600}
+    .cart-total{font-weight:700;color:#0f172a}
+    .cart-item-remove{border:none;background:none;color:#dc2626;font-weight:600;cursor:pointer}
+    .cart-summary{display:flex;justify-content:space-between;align-items:center;font-size:1.1rem;border-top:1px solid #e2e8f0;padding-top:1rem}
+    .cart-actions{display:flex;justify-content:flex-end;gap:1rem}
+    @media(max-width:640px){
+      .cart-item{grid-template-columns:1fr; text-align:center}
+      .cart-item>div:nth-child(2){order:3}
+      .cart-item>div:last-child{order:2;align-items:center!important}
+      .cart-actions{flex-direction:column}
+      .cart-actions .btn{width:100%;justify-content:center}
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/"><img src="/img/logo.png" alt="Logo"/></a>
+      <nav class="menu">
+        <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
+        <a href="/designers.html"><i class="fa-solid fa-users"></i> Diseñadores</a>
+        <a href="/designs.html"><i class="fa-solid fa-palette"></i> Diseños</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <h1>Tu carrito</h1>
+    <section id="cartView" class="cart-shell">
+      <p class="cart-empty">Aún no agregaste productos.</p>
+      <div class="cart-list" id="cartList"></div>
+      <div class="cart-summary">
+        <strong>Total</strong>
+        <span id="cartTotal">$0</span>
+      </div>
+      <div class="cart-actions">
+        <button id="btnClear" class="btn btn-outline">Vaciar carrito</button>
+        <button id="btnCheckout" class="btn btn-primary" disabled>Finalizar compra</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p><a class="link" href="#contacto">Contacto</a></p>
+    </div>
+  </footer>
+
+  <script src="/js/auth-ui.js" defer></script>
+  <script src="/js/cart-page.js" defer></script>
+</body>
+</html>

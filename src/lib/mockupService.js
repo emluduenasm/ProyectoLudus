@@ -9,6 +9,21 @@ const mockupsDir = path.join(uploadsDir, "mockups");
 const productosDir = path.join(process.cwd(), "public", "img", "productos");
 fs.mkdirSync(mockupsDir, { recursive: true });
 
+function withCacheBuster(url, versionSource) {
+  if (!url) return url;
+  let stamp = Date.now();
+  if (typeof versionSource === "number" && Number.isFinite(versionSource)) {
+    stamp = Number(versionSource);
+  } else if (versionSource) {
+    const parsed = Date.parse(versionSource);
+    if (!Number.isNaN(parsed)) {
+      stamp = parsed;
+    }
+  }
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${stamp}`;
+}
+
 const DEFAULT_CONFIG = {
   width_pct: 0.45,
   height_pct: 0.45,
@@ -31,8 +46,8 @@ function normalizeConfig(raw) {
     0.9,
     Number.isFinite(cfg.height_pct) ? cfg.height_pct : width
   );
-  let left = clamp(Number(cfg.left_pct), 0, 1, DEFAULT_CONFIG.left_pct);
-  let top = clamp(Number(cfg.top_pct), 0, 1, DEFAULT_CONFIG.top_pct);
+  const left = clamp(Number(cfg.left_pct), 0, 1, DEFAULT_CONFIG.left_pct);
+  const top = clamp(Number(cfg.top_pct), 0, 1, DEFAULT_CONFIG.top_pct);
   const blend =
     typeof cfg.blend === "string" && cfg.blend.trim()
       ? cfg.blend.trim()
@@ -41,13 +56,6 @@ function normalizeConfig(raw) {
     ? clamp(Number(cfg.opacity), 0, 1, undefined)
     : undefined;
   const angle = Number.isFinite(cfg.angle) ? Number(cfg.angle) : 0;
-  const halfWidth = width / 2;
-  const halfHeight = height / 2;
-  if (left < halfWidth) left = halfWidth;
-  if (left > 1 - halfWidth) left = 1 - halfWidth;
-  if (top < halfHeight) top = halfHeight;
-  if (top > 1 - halfHeight) top = 1 - halfHeight;
-
   return {
     width_pct: width,
     height_pct: height,
@@ -196,17 +204,19 @@ export async function generateProductMockups(designId, designPath, client = pool
       const outputPath = path.join(mockupsDir, filename);
       await fs.promises.writeFile(outputPath, buffer);
       const url = `/img/uploads/mockups/${filename}`;
-      await client.query(
+      const insert = await client.query(
         `INSERT INTO design_product_mockups (design_id, product_id, image_url)
          VALUES ($1,$2,$3)
          ON CONFLICT (design_id, product_id)
-         DO UPDATE SET image_url = EXCLUDED.image_url, created_at = now()`,
+         DO UPDATE SET image_url = EXCLUDED.image_url, created_at = now()
+         RETURNING created_at`,
         [designId, tpl.product_id, url]
       );
+      const createdAt = insert.rows[0]?.created_at;
       results.push({
         product_id: tpl.product_id,
         product_name: tpl.product_name,
-        image_url: url
+        image_url: withCacheBuster(url, createdAt)
       });
     } catch (err) {
       console.error("generateProductMockups", err?.message || err);
@@ -241,10 +251,13 @@ export async function getDesignMockups(designIds, client = pool) {
     `SELECT m.design_id,
             m.product_id,
             m.image_url,
-            p.name AS product_name
+            m.created_at,
+            p.name AS product_name,
+            p.price
        FROM design_product_mockups m
        JOIN products p ON p.id = m.product_id
       WHERE m.design_id = ANY($1::uuid[])
+        AND p.published = TRUE
       ORDER BY p.name ASC`,
     [designIds]
   );
@@ -254,7 +267,8 @@ export async function getDesignMockups(designIds, client = pool) {
     list.push({
       product_id: row.product_id,
       product_name: row.product_name,
-      image_url: row.image_url
+      image_url: withCacheBuster(row.image_url, row.created_at),
+      price: row.price !== null ? Number(row.price) : null
     });
     map.set(row.design_id, list);
   }

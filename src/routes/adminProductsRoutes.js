@@ -12,8 +12,10 @@ const onlyAdmin = [requireAuth, requireRole("admin")];
 
 const uploadsDir = path.join(process.cwd(), "public", "img", "uploads");
 const productosDir = path.join(process.cwd(), "public", "img", "productos");
+const mockupsDir = path.join(uploadsDir, "mockups");
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(productosDir, { recursive: true });
+fs.mkdirSync(mockupsDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, productosDir),
@@ -45,6 +47,36 @@ async function removeFileIfExists(absPath) {
   } catch {}
 }
 
+async function removeMockupsForProduct(productId) {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT image_url
+         FROM design_product_mockups
+        WHERE product_id = $1`,
+      [productId]
+    );
+
+    for (const row of rows) {
+      const imageUrl = row.image_url || "";
+      if (!imageUrl.startsWith("/img/uploads/mockups/")) continue;
+      const filename = imageUrl.replace("/img/uploads/mockups/", "");
+      if (!filename) continue;
+      await removeFileIfExists(path.join(mockupsDir, filename));
+    }
+
+    await client.query(
+      `DELETE FROM design_product_mockups
+        WHERE product_id = $1`,
+      [productId]
+    );
+  } catch (err) {
+    console.error("removeMockupsForProduct", err?.message || err);
+  } finally {
+    client.release();
+  }
+}
+
 const DEFAULT_MOCKUP_CONFIG = {
   width_pct: 0.45,
   height_pct: 0.45,
@@ -65,11 +97,8 @@ const normalizeConfig = (input) => {
 
   const widthClamped = Math.min(0.9, Math.max(0.05, width));
   const heightClamped = Math.min(0.9, Math.max(0.05, heightRaw));
-  let leftClamped = Math.min(1, Math.max(0, leftRaw));
-  let topClamped = Math.min(1, Math.max(0, topRaw));
-
-  if (leftClamped + widthClamped > 1) leftClamped = Math.max(0, 1 - widthClamped);
-  if (topClamped + heightClamped > 1) topClamped = Math.max(0, 1 - heightClamped);
+  const leftClamped = Math.min(1, Math.max(0, leftRaw));
+  const topClamped = Math.min(1, Math.max(0, topRaw));
 
   return {
     width_pct: widthClamped,
@@ -255,7 +284,11 @@ router.post(
           mockupConfig
         ]
       );
-      res.status(201).json(mapRow(insert.rows[0]));
+      const created = mapRow(insert.rows[0]);
+      if (created.published) {
+        await regenerateMockupsForProduct(created.id, { includeAllDesigns: true });
+      }
+      res.status(201).json(created);
     } catch (error) {
       console.error("ADMIN products create", error);
       if (req.file) {
@@ -329,8 +362,12 @@ router.patch(
         }
         fields.push(`stock = ${push(numericStock)}`);
       }
+      let nextPublishedValue = prev.published;
+      let publishedChanged = false;
       if (typeof req.body.published !== "undefined") {
-        fields.push(`published = ${push(parseBoolean(req.body.published, prev.published))}`);
+        nextPublishedValue = parseBoolean(req.body.published, prev.published);
+        publishedChanged = nextPublishedValue !== prev.published;
+        fields.push(`published = ${push(nextPublishedValue)}`);
       }
 
       let configChanged = false;
@@ -345,9 +382,9 @@ router.patch(
         fields.push(`mockup_config = ${push(newConfig)}`);
       }
 
-      let newImageUrl = prev.image_url;
+      const imageChanged = !!req.file;
       if (req.file) {
-        newImageUrl = `/img/productos/${req.file.filename}`;
+        const newImageUrl = `/img/productos/${req.file.filename}`;
         fields.push(`image_url = ${push(newImageUrl)}`);
       }
 
@@ -366,6 +403,7 @@ router.patch(
         RETURNING id, name, description, price, stock, image_url, published, mockup_config, created_at, updated_at`,
         values
       );
+      const updatedRow = mapRow(updateQ.rows[0]);
 
       if (req.file && prev.image_url && prev.image_url.startsWith("/img/productos/")) {
         const oldName = prev.image_url.replace("/img/productos/", "");
@@ -374,11 +412,20 @@ router.patch(
         }
       }
 
-      if (configChanged) {
+      if (publishedChanged && !nextPublishedValue) {
+        await removeMockupsForProduct(id);
+      }
+
+      const shouldRebuildAll =
+        (publishedChanged && nextPublishedValue) || imageChanged;
+
+      if (shouldRebuildAll) {
+        await regenerateMockupsForProduct(id, { includeAllDesigns: true });
+      } else if (configChanged) {
         await regenerateMockupsForProduct(id);
       }
 
-      res.json(mapRow(updateQ.rows[0]));
+      res.json(updatedRow);
     } catch (error) {
       console.error("ADMIN products update", error);
       if (req.file) {
@@ -392,12 +439,18 @@ router.patch(
 router.delete("/:id", ...onlyAdmin, async (req, res) => {
   const { id } = req.params;
   try {
-    const mockupsQ = await pool.query(
+    const productQ = await pool.query(
       `SELECT image_url
-         FROM design_product_mockups
-        WHERE product_id = $1`,
+         FROM products
+        WHERE id = $1
+        LIMIT 1`,
       [id]
     );
+    if (!productQ.rowCount) {
+      return res.status(404).json({ error: "Producto no encontrado" });
+    }
+
+    await removeMockupsForProduct(id);
 
     const del = await pool.query(
       `DELETE FROM products
@@ -407,16 +460,7 @@ router.delete("/:id", ...onlyAdmin, async (req, res) => {
     );
     if (!del.rowCount) return res.status(404).json({ error: "Producto no encontrado" });
 
-    for (const row of mockupsQ.rows) {
-      const imageUrl = row.image_url || "";
-      if (imageUrl.startsWith("/img/uploads/mockups/")) {
-        const filename = imageUrl.replace("/img/uploads/mockups/", "");
-        const abs = path.join(uploadsDir, "mockups", filename);
-        await removeFileIfExists(abs);
-      }
-    }
-
-    const imageUrl = del.rows[0]?.image_url || "";
+    const imageUrl = del.rows[0]?.image_url || productQ.rows[0]?.image_url || "";
     if (imageUrl && imageUrl.startsWith("/img/productos/")) {
       const name = imageUrl.replace("/img/productos/", "");
       if (name) await removeFileIfExists(path.join(productosDir, name));
@@ -429,16 +473,34 @@ router.delete("/:id", ...onlyAdmin, async (req, res) => {
   }
 });
 
-async function regenerateMockupsForProduct(productId) {
+async function regenerateMockupsForProduct(productId, { includeAllDesigns = false } = {}) {
   const client = await pool.connect();
   try {
-    const { rows } = await client.query(
-      `SELECT m.design_id, d.image_url
-         FROM design_product_mockups m
-         JOIN designs d ON d.id = m.design_id
-        WHERE m.product_id = $1`,
-      [productId]
-    );
+    let rows = [];
+    if (includeAllDesigns) {
+      const q = await client.query(
+        `SELECT id AS design_id, image_url
+           FROM designs
+          WHERE image_url IS NOT NULL
+            AND LENGTH(TRIM(image_url)) > 0
+            AND (
+              published = TRUE
+              OR COALESCE(review_status, 'pending') = 'approved'
+            )`
+      );
+      rows = q.rows;
+    } else {
+      const q = await client.query(
+        `SELECT m.design_id, d.image_url
+           FROM design_product_mockups m
+           JOIN designs d ON d.id = m.design_id
+          WHERE m.product_id = $1`,
+        [productId]
+      );
+      rows = q.rows;
+    }
+
+    if (!rows.length) return;
 
     for (const row of rows) {
       if (!row.image_url) continue;
