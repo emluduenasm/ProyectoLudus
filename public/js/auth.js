@@ -46,6 +46,21 @@ const setOK = (input, msg) => {
   input.classList.remove("is-invalid");
 };
 
+const clearFeedback = (input) => {
+  if (!input) return;
+  const parent = input.parentElement;
+  if (parent) {
+    const el = parent.querySelector(".input-msg");
+    if (el) {
+      el.textContent = "";
+      el.classList.remove("error");
+      el.classList.remove("ok");
+    }
+  }
+  input.classList.remove("is-valid");
+  input.classList.remove("is-invalid");
+};
+
 /* ==========================
    Reglas de validación
 ========================== */
@@ -84,6 +99,12 @@ if (formRegister) {
   const email     = byName(formRegister, "email");
   const password  = byName(formRegister, "password");
   const usePref   = byName(formRegister, "use_preference");
+  const avatarInput = byName(formRegister, "avatar");
+  const avatarPreviewBox = document.getElementById("avatarPreview");
+  const avatarPreviewImg = document.getElementById("avatarPreviewImg");
+  const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png"];
+  const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2 MB
+  let avatarPreviewToken = 0;
 
   // Mensaje global (lo creo si no existe)
   let msgGlobal = document.getElementById("msg-register");
@@ -111,6 +132,32 @@ if (formRegister) {
   meter.querySelector("i").style.borderRadius = "999px";
   meter.querySelector("i").style.transition = "width .2s ease";
   password.parentElement.appendChild(meter);
+
+  const clearAvatarPreview = () => {
+    avatarPreviewToken++;
+    if (avatarPreviewImg) {
+      avatarPreviewImg.removeAttribute("src");
+    }
+    if (avatarPreviewBox) avatarPreviewBox.hidden = true;
+  };
+
+  const showAvatarPreview = (file) => {
+    if (!avatarPreviewImg || !avatarPreviewBox) return;
+    const token = ++avatarPreviewToken;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (token !== avatarPreviewToken) return;
+      if (typeof reader.result === "string") {
+        avatarPreviewImg.src = reader.result;
+        avatarPreviewImg.alt = file.name || "Avatar";
+        avatarPreviewBox.hidden = false;
+      }
+    };
+    reader.onerror = () => {
+      clearAvatarPreview();
+    };
+    reader.readAsDataURL(file);
+  };
 
   function paintMeter(score) {
     const i = meter.querySelector("i");
@@ -167,8 +214,33 @@ if (formRegister) {
       if (!usePref.value) return setError(usePref, "Seleccioná una opción");
       setOK(usePref);
       return true;
-    }
+    },
   };
+
+  if (avatarInput) {
+    v.avatar = () => {
+      const file = avatarInput.files[0];
+      if (!file) {
+        clearAvatarPreview();
+        return setError(avatarInput, "Subí una foto en JPG o PNG (máx 2 MB).");
+      }
+      if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+        clearAvatarPreview();
+        avatarInput.value = "";
+        setError(avatarInput, "Solo se admite JPG o PNG.");
+        return false;
+      }
+      if (file.size > MAX_AVATAR_SIZE) {
+        clearAvatarPreview();
+        avatarInput.value = "";
+        setError(avatarInput, "El archivo debe pesar menos de 2 MB.");
+        return false;
+      }
+      showAvatarPreview(file);
+      setOK(avatarInput, "Archivo listo");
+      return true;
+    };
+  }
 
   // Validación en vivo
   firstName.addEventListener("input", v.firstName);
@@ -178,16 +250,25 @@ if (formRegister) {
   email.addEventListener("input", v.email);
   password.addEventListener("input", v.password);
   usePref.addEventListener("change", v.usePref);
+  if (avatarInput && v.avatar) {
+    avatarInput.addEventListener("change", () => v.avatar());
+  }
 
   formRegister.addEventListener("submit", async (e) => {
     e.preventDefault();
     msgGlobal.textContent = "";
     msgGlobal.className = "muted";
 
-    const allOK = [
+    const validations = [
       v.firstName(), v.lastName(), v.dni(),
       v.username(), v.email(), v.password(), v.usePref()
-    ].every(Boolean);
+    ];
+
+    if (typeof v.avatar === "function") {
+      validations.push(v.avatar());
+    }
+
+    const allOK = validations.every(Boolean);
 
     if (!allOK) {
       msgGlobal.textContent = "Revisá los campos marcados en rojo.";
@@ -196,8 +277,6 @@ if (formRegister) {
     }
 
     const f = new FormData(formRegister);
-    // Enviamos tal cual (incluye use_preference)
-    const payload = Object.fromEntries(f.entries());
 
     try {
           // Pre-chequeo para evitar 409 por duplicados (user-friendly)
@@ -222,8 +301,7 @@ if (formRegister) {
 
       const res = await fetch(api("/register"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: f
       });
       const data = await res.json();
       if (!res.ok) throw data;
@@ -233,7 +311,9 @@ if (formRegister) {
       msgGlobal.className = "ok";
 
       // Redirige según preferencia (el backend mapea a rol)
-      const next = (payload.use_preference === "upload") ? "/upload.html" : "/";
+      const prefValue = usePref.value;
+      const isUpload = prefValue === "upload" || prefValue === "both";
+      const next = isUpload ? "/upload.html" : "/";
       setTimeout(() => (window.location.href = next), 700);
     } catch (err) {
       msgGlobal.textContent = err?.error || "Error al registrar";
@@ -304,6 +384,12 @@ if (formRegister) {
   email.addEventListener("input", () => { v.email() && liveUniqueCheck(); });
   dni.addEventListener("input",   () => { v.dni()   && liveUniqueCheck(); });
   username.addEventListener("input", () => { v.username() && liveUniqueCheck(); });
+  if (avatarInput) {
+    formRegister.addEventListener("reset", () => {
+      clearAvatarPreview();
+      clearFeedback(avatarInput);
+    });
+  }
 
 }
 

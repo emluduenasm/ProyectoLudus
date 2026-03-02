@@ -58,6 +58,19 @@
       gap: 8px;
       box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.15);
     }
+    .loading-spinner {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 4px solid #cbd5f5;
+      border-top-color: #2c6fb2;
+      animation: spin 0.9s linear infinite;
+      margin: 8px auto 0;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
     .preview-card h4 {
       margin: 0;
       font-size: 14px;
@@ -120,8 +133,9 @@
       </div>
 
       <div class="span-2">
-        <label>Descripción (opcional)
-          <textarea class="input" name="description" rows="4" placeholder="Contanos de qué se trata…"></textarea>
+        <label>Descripción
+          <textarea class="input" name="description" rows="4" placeholder="Contanos de qué se trata…" required minlength="10"></textarea>
+          <div class="hint">Obligatoria. Al menos 10 caracteres que describan tu diseño.</div>
         </label>
       </div>
 

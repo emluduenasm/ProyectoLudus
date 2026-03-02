@@ -6,6 +6,26 @@
   <title>Crear cuenta · Ludus Stamps</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <link rel="stylesheet" href="/styles.css"/>
+  <style>
+    .avatar-upload-field input[type="file"] {
+      margin-top: .35rem;
+      width: 100%;
+    }
+    .avatar-upload-field .avatar-preview {
+      margin-top: .75rem;
+      width: 130px;
+      aspect-ratio: 1/1;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #e2e8f0;
+    }
+    .avatar-upload-field .avatar-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+  </style>
 </head>
 <body>
   <header class="site-header">
@@ -65,6 +85,15 @@
               <option value="both">Ambos</option>
             </select>
             <p class="muted" style="margin-top:.4rem">Elegí la opción que se acerque más a tu objetivo inicial. Sin importar tu elección, vas a poder subir tus propios diseños y también comprar productos.</p>
+          </div>
+
+          <div class="form-col-2 avatar-upload-field">
+            <label for="avatar">Foto de perfil</label>
+            <input id="avatar" name="avatar" type="file" accept=".jpg,.jpeg,.png" required>
+            <div class="hint">Obligatoria. Formato JPG o PNG, máximo 2 MB.</div>
+            <div class="avatar-preview" id="avatarPreview" hidden aria-live="polite">
+              <img id="avatarPreviewImg" alt="Vista previa de tu avatar" loading="lazy">
+            </div>
           </div>
         </div>
 

@@ -116,6 +116,7 @@ const bootstrap = async () => {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'buyer',
       use_preference TEXT DEFAULT 'buy',
+      avatar_url TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -317,6 +318,9 @@ const runSupplementalMigrations = async () => {
     UPDATE users SET use_preference = COALESCE(use_preference, 'buy');
   `);
   await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+  `);
+  await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT FALSE;
   `);
   await pool.query(`
@@ -412,8 +416,8 @@ async function ensureSeedUsers(client) {
         : null;
       const hash = await bcrypt.hash(seed.password || "changeme123", 10);
       const inserted = await client.query(
-        `INSERT INTO users (id, name, username, email, password_hash, role, use_preference, persona_id, banned)
-         VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,$6,$7,FALSE)
+        `INSERT INTO users (id, name, username, email, password_hash, role, use_preference, persona_id, banned, avatar_url)
+         VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,$6,$7,FALSE,$8)
          RETURNING id`,
         [
           seed.name || seed.display_name || "Usuario Demo",
@@ -422,7 +426,8 @@ async function ensureSeedUsers(client) {
           hash,
           seed.role || "buyer",
           seed.use_preference || (seed.role === "designer" ? "upload" : "buy"),
-          persona
+          persona,
+          seed.avatar || DEFAULT_AVATAR
         ]
       );
       userId = inserted.rows[0].id;

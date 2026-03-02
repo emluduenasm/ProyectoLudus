@@ -125,7 +125,8 @@ async function buildComposite(templatePath, designSource, config) {
   let overlaySharp = sharp(designSource).resize({
     width: overlayWidth,
     height: overlayHeight,
-    fit: "cover"
+    fit: "contain",
+    background: { r: 255, g: 255, b: 255, alpha: 0 }
   });
 
   if (config.angle) {

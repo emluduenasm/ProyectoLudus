@@ -2,6 +2,10 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
+import sharp from "sharp";
+import fs from "fs";
+import path from "path";
 import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -9,13 +13,54 @@ import { requireAuth } from "../middleware/auth.js";
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 const sign = (payload) => jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+const uploadsDir = path.join(process.cwd(), "public", "img", "uploads");
+const avatarsDir = path.join(uploadsDir, "avatars");
+fs.mkdirSync(uploadsDir, { recursive: true });
+fs.mkdirSync(avatarsDir, { recursive: true });
+const ALLOWED_AVATAR_TYPES = ["image/png", "image/jpeg"];
+
+const registerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = ALLOWED_AVATAR_TYPES.includes(file.mimetype);
+    cb(ok ? null : new Error("Formato no permitido (solo JPG o PNG)"), ok);
+  }
+});
+
+const processAvatar = async (buffer, userId) => {
+  const filename = `${userId}-${Date.now()}.jpg`;
+  const filePath = path.join(avatarsDir, filename);
+  const processed = await sharp(buffer)
+    .resize({ width: 512, height: 512, fit: "cover" })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+  await fs.promises.writeFile(filePath, processed);
+  return {
+    url: `/img/uploads/avatars/${filename}`,
+    diskPath: filePath
+  };
+};
 
 /**
  * POST /api/auth/register
  * body: { name, username, email, password }
  */
-router.post("/register", async (req, res) => {
+router.post(
+  "/register",
+  (req, res, next) => {
+    registerUpload.single("avatar")(req, res, (err) => {
+      if (err) {
+        return res
+          .status(400)
+          .json({ error: err?.message || "Imagen inválida (JPG/PNG, máx 2 MB)" });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
   const client = await pool.connect();
+  let avatarPathOnDisk = null;
   try {
     const {
       first_name = "",
@@ -32,12 +77,15 @@ router.post("/register", async (req, res) => {
     const dniClean = String(dni).replace(/\D/g, "");
     const uname = String(username).trim();
     const emailNorm = String(email).trim().toLowerCase();
+    const usePrefNormalized = (["upload", "both"].includes(use_preference) ? "upload" : "buy");
+    const role = usePrefNormalized === "upload" ? "designer" : "buyer";
 
     // Validaciones mínimas y claras
     if (!emailNorm || !password) return res.status(400).json({ error: "Email y password requeridos" });
     if (!fn) return res.status(400).json({ error: "Nombres requeridos" });
     if (!ln) return res.status(400).json({ error: "Apellidos requeridos" });
     if (!/^\d{8}$/.test(dniClean)) return res.status(400).json({ error: "DNI inválido (8 dígitos)" });
+    if (!req.file) return res.status(400).json({ error: "La foto de perfil es obligatoria." });
 
     // Duplicados
     const dupe = await pool.query(
@@ -54,8 +102,6 @@ router.post("/register", async (req, res) => {
     if (flags.username_taken) return res.status(409).json({ error: "El alias ya está en uso" });
     if (flags.dni_taken)      return res.status(409).json({ error: "El DNI ya está registrado" });
 
-    const role = (use_preference === "upload") ? "designer" : "buyer";
-
     await client.query("BEGIN");
 
     const persona = await client.query(
@@ -67,25 +113,51 @@ router.post("/register", async (req, res) => {
 
     const hash = await bcrypt.hash(password, 12);
     const user = await client.query(
-      `INSERT INTO users (id, name, username, email, password_hash, role, persona_id)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
-       RETURNING id, email, username, role, persona_id, created_at`,
+      `INSERT INTO users (id, name, username, email, password_hash, role, persona_id, use_preference)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, email, username, role, persona_id, use_preference, created_at`,
       [
         `${fn} ${ln}`.trim(),
         uname,
         emailNorm,
         hash,
         role,
-        persona.rows[0].id
+        persona.rows[0].id,
+        usePrefNormalized
       ]
     );
+    const userId = user.rows[0].id;
+    const avatar = await processAvatar(req.file.buffer, userId);
+    avatarPathOnDisk = avatar.diskPath;
+    await client.query(
+      `UPDATE users SET avatar_url=$1 WHERE id=$2`,
+      [avatar.url, userId]
+    );
+    if (role === "designer") {
+      const displayName = uname || `${fn} ${ln}`.trim() || emailNorm;
+      await client.query(
+        `INSERT INTO designers (user_id, display_name, avatar_url)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (user_id)
+         DO UPDATE SET avatar_url = EXCLUDED.avatar_url,
+                       display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), designers.display_name)`,
+        [userId, displayName || "Diseñador", avatar.url]
+      );
+    }
 
     await client.query("COMMIT");
 
     const token = sign({ id: user.rows[0].id, email: user.rows[0].email });
-    res.status(201).json({ token, user: user.rows[0], persona: persona.rows[0] });
+    res.status(201).json({
+      token,
+      user: { ...user.rows[0], avatar_url: avatar.url },
+      persona: persona.rows[0]
+    });
   } catch (e) {
     await client.query("ROLLBACK").catch(()=>{});
+    if (avatarPathOnDisk) {
+      fs.promises.unlink(avatarPathOnDisk).catch(() => {});
+    }
     console.error("register", e);
     res.status(500).json({ error: "No se pudo registrar" });
   } finally {
