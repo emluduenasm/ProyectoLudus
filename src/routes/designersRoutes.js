@@ -7,6 +7,7 @@ import sharp from "sharp";
 import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { ensureDesigner, DEFAULT_AVATAR, getDesignerByUser } from "../lib/designerService.js";
+import { ensureOrderSchema } from "../lib/orderService.js";
 
 const router = Router();
 const uploadsDir = path.join(process.cwd(), "public", "img", "uploads");
@@ -32,6 +33,11 @@ async function removeFileIfExists(filePath) {
 }
 
 const normalizeAvatar = (url) => (url && url.trim() ? url : DEFAULT_AVATAR);
+const clampInt = (value, min, max, fallback) => {
+  const num = Number.parseInt(value, 10);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+};
 
 async function getDesignerStats(designerId) {
   if (!designerId) return { designs: 0, likes: 0 };
@@ -664,5 +670,72 @@ router.put(
     }
   }
 );
+
+router.get("/me/sales", requireAuth, async (req, res) => {
+  try {
+    await ensureOrderSchema();
+    const userId = req.user.id;
+    await ensureDesigner(userId);
+    const page = clampInt(req.query.page, 1, 1000, 1);
+    const limit = clampInt(req.query.limit, 1, 100, 10);
+    const offset = (page - 1) * limit;
+
+    const countQ = await pool.query(
+      `SELECT COUNT(*)::int AS total
+         FROM order_items
+        WHERE designer_user_id = $1`,
+      [userId]
+    );
+    const total = countQ.rows[0]?.total ?? 0;
+
+    const dataQ = await pool.query(
+      `SELECT
+         oi.id,
+         oi.design_id,
+         oi.design_title,
+         oi.product_id,
+         oi.product_name,
+         oi.quantity,
+         oi.unit_price,
+         o.id AS order_id,
+         o.order_number,
+         o.created_at,
+         u.id AS buyer_id,
+         COALESCE(NULLIF(TRIM(u.name), ''), u.email) AS buyer_name,
+         u.email AS buyer_email
+       FROM order_items oi
+       JOIN orders o ON o.id = oi.order_id
+       JOIN users u ON u.id = o.user_id
+      WHERE oi.designer_user_id = $1
+      ORDER BY o.created_at DESC
+      LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
+    );
+
+    const items = dataQ.rows.map((row) => ({
+      id: row.id,
+      order_id: row.order_id,
+      order_number: row.order_number,
+      created_at: row.created_at,
+      design_id: row.design_id,
+      design_title: row.design_title,
+      product_id: row.product_id,
+      product_name: row.product_name,
+      quantity: row.quantity,
+      unit_price: Number(row.unit_price ?? 0),
+      line_total: Number(row.unit_price ?? 0) * row.quantity,
+      buyer: {
+        id: row.buyer_id,
+        name: row.buyer_name,
+        email: row.buyer_email
+      }
+    }));
+
+    res.json({ page, limit, total, items });
+  } catch (err) {
+    console.error("GET /designers/me/sales", err);
+    res.status(500).json({ error: "No se pudo obtener las ventas." });
+  }
+});
 
 export default router;

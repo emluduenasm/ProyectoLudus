@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin · Pedidos</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="/styles.css"/>
+  <style>
+    .admin-wrap{max-width:1100px;margin:2rem auto;padding:1rem}
+    .toolbar{display:flex;gap:.75rem;align-items:center;margin-bottom:1rem}
+    .toolbar input[type="search"]{flex:1}
+    .toolbar .spacer{flex:1}
+    .filters{display:grid;grid-template-columns:1fr 1fr 150px;gap:.8rem;margin-bottom:1.2rem}
+    .filters label{font-size:.82rem;color:#64748b;display:flex;flex-direction:column;gap:.25rem}
+    table{width:100%;border-collapse:separate;border-spacing:0 .5rem}
+    th,td{padding:.65rem .85rem;background:#fff}
+    th{color:#334155;text-align:left;font-size:.85rem;text-transform:uppercase;letter-spacing:.4px}
+    td:first-child,th:first-child{border-top-left-radius:12px;border-bottom-left-radius:12px}
+    td:last-child,th:last-child{border-top-right-radius:12px;border-bottom-right-radius:12px}
+    .muted-sm{color:#64748b;font-size:.85rem}
+    .status-pill{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .7rem;border-radius:999px;font-size:.78rem;font-weight:600}
+    .status-pill.pending{background:#fef3c7;color:#92400e}
+    .status-pill.completed{background:#dcfce7;color:#166534}
+    .status-pill.cancelled{background:#fee2e2;color:#991b1b}
+    .actions{display:flex;gap:.5rem;flex-wrap:wrap}
+    dialog{border:none;border-radius:18px;padding:0;box-shadow:0 18px 36px rgba(15,23,42,.2)}
+    dialog::backdrop{background:rgba(15,23,42,.32)}
+    .modal-card{padding:1.4rem;max-width:min(560px,92vw)}
+    .detail-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:1rem}
+    .detail-item{border:1px solid #e2e8f0;border-radius:12px;padding:.85rem}
+    .detail-item h4{margin:.1rem 0 .4rem;font-size:1rem}
+    .detail-meta{color:#64748b;font-size:.9rem;margin-bottom:.35rem}
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/"><img src="/img/logo.png" alt="Logo"/></a>
+      <nav class="menu">
+        <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
+        <a href="/upload.html"><i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="admin-wrap">
+    <h1>Panel admin · Pedidos</h1>
+
+    <nav class="admin-subnav">
+      <a href="/admin/designs.html" class="tab"><i class="fa-solid fa-palette"></i> Diseños</a>
+      <a href="/admin/users.html" class="tab"><i class="fa-solid fa-users-gear"></i> Usuarios</a>
+      <a href="/admin/products.html" class="tab"><i class="fa-solid fa-store"></i> Productos</a>
+      <a href="/admin/orders.html" class="tab active"><i class="fa-solid fa-bag-shopping"></i> Pedidos</a>
+    </nav>
+
+    <div class="toolbar">
+      <input id="q" type="search" class="input" placeholder="Buscar por número o cliente…"/>
+      <button id="btnSearch" class="btn"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
+      <span id="resultInfo" class="muted-sm spacer"></span>
+      <button id="btnClear" class="btn btn-outline" type="button"><i class="fa-solid fa-eraser"></i> Limpiar</button>
+    </div>
+
+    <div class="filters">
+      <label>Estado
+        <select id="fStatus" class="input">
+          <option value="">Todos</option>
+          <option value="pending">Pendiente</option>
+          <option value="completed">Completado</option>
+          <option value="cancelled">Cancelado</option>
+        </select>
+      </label>
+      <label>Por página
+        <select id="fLimit" class="input">
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="30">30</option>
+        </select>
+      </label>
+      <label>&nbsp;
+        <div class="muted-sm" id="pageInfo"></div>
+      </label>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Número</th>
+            <th>Cliente</th>
+            <th>Productos</th>
+            <th>Total</th>
+            <th>Estado</th>
+            <th>Creado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="pagination">
+      <button id="prev" class="btn">←</button>
+      <button id="next" class="btn">→</button>
+    </div>
+
+    <dialog id="modal">
+      <article class="modal-card">
+        <h2 id="modalTitle" style="margin:0 0 .5rem">Pedido</h2>
+        <p class="muted-sm" id="modalMeta"></p>
+        <div id="modalItems"></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:1rem">
+          <button type="button" class="btn" id="btnModalClose">Cerrar</button>
+        </div>
+      </article>
+    </dialog>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p><a class="link" href="#contacto">Contacto</a></p>
+    </div>
+  </footer>
+
+  <script src="/js/auth-ui.js" defer></script>
+  <script src="/js/admin-orders.js" defer></script>
+</body>
+</html>

@@ -102,7 +102,12 @@ async function loadReviewQueue() {
     });
     if (!res.ok) throw new Error("No se pudo cargar la revisión");
     const data = await res.json();
-    renderReviewQueue(data.items || []);
+    const rows = Array.isArray(data.items) ? data.items : [];
+    const pending = rows.filter((item) => {
+      const status = item.review_status || (item.published ? "approved" : "pending");
+      return status === "pending";
+    });
+    renderReviewQueue(pending);
   } catch (e) {
     console.error(e);
     el.reviewSection.style.display = "block";
@@ -141,6 +146,7 @@ function renderReviewQueue(items) {
       <div class="review-actions">
         <button class="btn btn-success" data-action="publish"><i class="fa-solid fa-circle-check"></i> Publicar</button>
         <button class="btn btn-danger" data-action="reject"><i class="fa-solid fa-xmark"></i> Rechazar</button>
+        <button class="btn btn-danger" data-action="delete"><i class="fa-solid fa-trash"></i> Eliminar</button>
       </div>
     </article>
   `).join("");
@@ -152,7 +158,8 @@ function renderReviewQueue(items) {
     btn.addEventListener("click", async () => {
       const action = btn.dataset.action;
       if (action === "publish") await publishDesign(id, btn);
-      if (action === "reject") await rejectDesign(id);
+      if (action === "reject") await rejectDesign(id, btn);
+      if (action === "delete") await confirmDel(id);
     });
   });
 }
@@ -295,19 +302,16 @@ async function publishDesign(id, btn) {
   }
 }
 
-async function rejectDesign(id) {
-  if (!confirm("¿Rechazar este diseño? Se eliminará definitivamente.")) return;
+async function rejectDesign(id, btn) {
+  if (!confirm("¿Marcar este diseño como rechazado? El autor podrá editarlo y reenviarlo.")) return;
+  if (btn) btn.disabled = true;
   try {
-    const res = await fetch(api(`/admin/designs/${id}`), {
-      method: "DELETE",
-      headers: { ...auth() },
-      cache: "no-store"
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "No se pudo rechazar");
+    await patchDesign(id, { review_status: "rejected", published: false });
     await loadList();
   } catch (e) {
     alert(e.message || "No se pudo rechazar el diseño.");
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

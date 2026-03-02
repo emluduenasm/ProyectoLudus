@@ -9,6 +9,8 @@
   const totalEl = $("#cartTotal");
   const btnClear = $("#btnClear");
   const btnCheckout = $("#btnCheckout");
+  const msgEl = $("#cartMsg");
+  const token = localStorage.getItem("token") || "";
 
   if (!list || !empty || !totalEl) return;
 
@@ -96,8 +98,49 @@
     }
   });
 
-  btnCheckout?.addEventListener("click", () => {
-    alert("Próximamente podrás finalizar la compra desde aquí.");
+  btnCheckout?.addEventListener("click", async () => {
+    if (!cartStore.getItems().length) return;
+    if (!token) {
+      const next = encodeURIComponent(location.pathname + location.search);
+      location.href = `/login.html?next=${next}`;
+      return;
+    }
+    setMessage("");
+    btnCheckout.disabled = true;
+    btnCheckout.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Procesando…`;
+    try {
+      const payload = {
+        items: cartStore.getItems().map((item) => ({
+          design_id: item.design_id,
+          product_id: item.product_id,
+          quantity: item.quantity
+        }))
+      };
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload),
+        cache: "no-store"
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = [data?.error, data?.detail].filter(Boolean).join(" — ");
+        throw new Error(message || "No se pudo crear el pedido.");
+      }
+      cartStore.clear();
+      setMessage(
+        `Pedido #${data?.order?.order_number || "-"} registrado correctamente. Te contactaremos para el pago.`
+      );
+    } catch (err) {
+      console.error(err);
+      setMessage(err.message || "Ocurrió un error al finalizar la compra.", true);
+    } finally {
+      btnCheckout.disabled = false;
+      btnCheckout.innerHTML = `Finalizar compra`;
+    }
   });
 
   function adjustQuantity(key, delta) {
@@ -112,4 +155,10 @@
   window.addEventListener("beforeunload", () => {
     unsubscribe?.();
   });
+
+  function setMessage(text, isError = false) {
+    if (!msgEl) return;
+    msgEl.textContent = text;
+    msgEl.style.color = isError ? "#dc2626" : "#64748b";
+  }
 })();
