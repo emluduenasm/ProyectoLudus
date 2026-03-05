@@ -37,6 +37,22 @@ const onlyAdmin = [requireAuth, requireRole("admin")];
 
 async function removeFileIfExists(filePathAbs) { try { await fs.promises.unlink(filePathAbs); } catch {} }
 
+async function resolveDesignAssetPath(row) {
+  if (!row) return null;
+  const sources = [row.image_url, row.thumbnail_url];
+  for (const src of sources) {
+    if (!src) continue;
+    const abs = path.join(process.cwd(), "public", src.replace(/^\/+/, ""));
+    try {
+      await fs.promises.access(abs);
+      return abs;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 /* ------- LIST (búsqueda + filtros + orden + paginación) ------- */
 router.get("/", ...onlyAdmin, async (req, res) => {
   try {
@@ -150,6 +166,16 @@ router.patch("/:id", ...onlyAdmin, async (req, res) => {
     const { id } = req.params;
     let { title, description, published, category_id, review_status } = req.body;
 
+    const currentQ = await pool.query(
+      `SELECT id, image_url, review_status, COALESCE(published, FALSE) AS published
+         FROM designs
+        WHERE id = $1
+        LIMIT 1`,
+      [id]
+    );
+    if (!currentQ.rowCount) return res.status(404).json({ error: "Diseño no encontrado" });
+    const currentRow = currentQ.rows[0];
+
     if (typeof category_id !== "undefined") {
       const vr = await pool.query(`SELECT id FROM categories WHERE id=$1 AND active=TRUE`, [category_id]);
       if (!vr.rowCount) return res.status(400).json({ error: "Categoría inválida" });
@@ -195,6 +221,25 @@ router.patch("/:id", ...onlyAdmin, async (req, res) => {
       values
     );
     if (!upd.rows.length) return res.status(404).json({ error: "Diseño no encontrado" });
+    const updatedRow = upd.rows[0];
+
+    const wasApproved =
+      currentRow.review_status === "approved" || currentRow.published === true;
+    const isApprovedNow =
+      updatedRow.review_status === "approved" || updatedRow.published === true;
+
+    if (isApprovedNow && !wasApproved) {
+      const assetPath = await resolveDesignAssetPath(updatedRow);
+      if (assetPath) {
+        try {
+          await generateProductMockups(id, assetPath);
+        } catch (err) {
+          console.error("ADMIN designs mockup regen", err?.message || err);
+        }
+      } else {
+        console.warn("ADMIN designs mockup regen: no asset for design", id);
+      }
+    }
     const mockupMap = await getDesignMockups([id]);
     const mockups = mockupMap.get(id) || [];
     const remera =

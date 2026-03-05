@@ -399,6 +399,7 @@ function openModal(product) {
     modalTitle.textContent = "Editar producto";
   } else {
     modalTitle.textContent = "Nuevo producto";
+    form.published.checked = true;
   }
   if (typeof modal?.showModal === "function") {
     modal.showModal();

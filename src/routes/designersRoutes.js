@@ -680,11 +680,47 @@ router.get("/me/sales", requireAuth, async (req, res) => {
     const limit = clampInt(req.query.limit, 1, 100, 10);
     const offset = (page - 1) * limit;
 
+    const productId =
+      typeof req.query.product_id === "string" ? req.query.product_id.trim() : "";
+    const fromRaw = typeof req.query.from === "string" ? req.query.from.trim() : "";
+    const toRaw = typeof req.query.to === "string" ? req.query.to.trim() : "";
+
+    const normalizeDate = (value) => {
+      if (!value) return null;
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toISOString().slice(0, 10);
+    };
+    const fromDate = normalizeDate(fromRaw);
+    const toDate = normalizeDate(toRaw);
+
+    const filters = ["oi.designer_user_id = $1"];
+    const params = [userId];
+    let idx = 1;
+    const push = (val) => {
+      params.push(val);
+      idx += 1;
+      return `$${idx}`;
+    };
+
+    if (productId) {
+      filters.push(`oi.product_id = ${push(productId)}`);
+    }
+    if (fromDate) {
+      filters.push(`DATE(o.created_at) >= ${push(fromDate)}`);
+    }
+    if (toDate) {
+      filters.push(`DATE(o.created_at) <= ${push(toDate)}`);
+    }
+
+    const whereSql = `WHERE ${filters.join(" AND ")}`;
+
     const countQ = await pool.query(
       `SELECT COUNT(*)::int AS total
-         FROM order_items
-        WHERE designer_user_id = $1`,
-      [userId]
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+        ${whereSql}`,
+      params
     );
     const total = countQ.rows[0]?.total ?? 0;
 
@@ -699,6 +735,7 @@ router.get("/me/sales", requireAuth, async (req, res) => {
          oi.unit_price,
          o.id AS order_id,
          o.order_number,
+         o.status AS order_status,
          o.created_at,
          u.id AS buyer_id,
          COALESCE(NULLIF(TRIM(u.name), ''), u.email) AS buyer_name,
@@ -706,10 +743,10 @@ router.get("/me/sales", requireAuth, async (req, res) => {
        FROM order_items oi
        JOIN orders o ON o.id = oi.order_id
        JOIN users u ON u.id = o.user_id
-      WHERE oi.designer_user_id = $1
+      ${whereSql}
       ORDER BY o.created_at DESC
-      LIMIT $2 OFFSET $3`,
-      [userId, limit, offset]
+      LIMIT $${idx + 1} OFFSET $${idx + 2}`,
+      [...params, limit, offset]
     );
 
     const items = dataQ.rows.map((row) => ({
@@ -724,6 +761,7 @@ router.get("/me/sales", requireAuth, async (req, res) => {
       quantity: row.quantity,
       unit_price: Number(row.unit_price ?? 0),
       line_total: Number(row.unit_price ?? 0) * row.quantity,
+      status: row.order_status || "pending",
       buyer: {
         id: row.buyer_id,
         name: row.buyer_name,
@@ -731,7 +769,30 @@ router.get("/me/sales", requireAuth, async (req, res) => {
       }
     }));
 
-    res.json({ page, limit, total, items });
+    const totalAmountQ = await pool.query(
+      `SELECT COALESCE(SUM(oi.unit_price * oi.quantity), 0)::numeric AS total_amount
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+        ${whereSql}`,
+      params
+    );
+    const totalAmount = Number(totalAmountQ.rows[0]?.total_amount ?? 0);
+
+    const productsQ = await pool.query(
+      `SELECT DISTINCT oi.product_id, oi.product_name
+         FROM order_items oi
+        WHERE oi.designer_user_id = $1
+        ORDER BY oi.product_name ASC NULLS LAST`,
+      [userId]
+    );
+    const products = productsQ.rows
+      .filter((row) => row.product_id)
+      .map((row) => ({
+        id: row.product_id,
+        name: row.product_name || "Producto"
+      }));
+
+    res.json({ page, limit, total, total_amount: totalAmount, items, products });
   } catch (err) {
     console.error("GET /designers/me/sales", err);
     res.status(500).json({ error: "No se pudo obtener las ventas." });

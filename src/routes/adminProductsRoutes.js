@@ -482,11 +482,7 @@ async function regenerateMockupsForProduct(productId, { includeAllDesigns = fals
         `SELECT id AS design_id, image_url
            FROM designs
           WHERE image_url IS NOT NULL
-            AND LENGTH(TRIM(image_url)) > 0
-            AND (
-              published = TRUE
-              OR COALESCE(review_status, 'pending') = 'approved'
-            )`
+            AND LENGTH(TRIM(image_url)) > 0`
       );
       rows = q.rows;
     } else {

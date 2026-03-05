@@ -59,6 +59,22 @@ async function removeFileIfExists(filePathAbs) {
   } catch {}
 }
 
+async function resolveDesignAssetPath(row) {
+  if (!row) return null;
+  const sources = [row.image_url, row.thumbnail_url];
+  for (const source of sources) {
+    if (!source) continue;
+    const abs = path.join(process.cwd(), "public", source.replace(/^\/+/, ""));
+    try {
+      await fs.promises.access(abs);
+      return abs;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 
 /* ---------- Endpoints públicos ---------- */
 
@@ -646,14 +662,49 @@ router.get("/:id", async (req, res) => {
       [id]
     );
     if (!q.rows.length) return res.status(404).json({ error: "Diseño no encontrado" });
+    const designRow = q.rows[0];
+    const productsQ = await pool.query(
+      `SELECT id
+         FROM products
+        WHERE published = TRUE
+          AND image_url IS NOT NULL
+          AND LENGTH(TRIM(image_url)) > 0`
+    );
+    const publishedProductIds = productsQ.rows.map((row) => String(row.id));
+
     const mockupsMap = await getDesignMockups([id]);
-    const mockups = mockupsMap.get(id) || [];
+    let mockups = mockupsMap.get(id) || [];
+    const mockupProductIds = mockups
+      .map((m) => (m.product_id ? String(m.product_id) : null))
+      .filter(Boolean);
+    const missingProductIds = publishedProductIds.filter(
+      (prodId) => !mockupProductIds.includes(prodId)
+    );
+
+    const needsFullRegen = mockups.length === 0;
+    const needsMissing = missingProductIds.length > 0;
+
+    if ((needsFullRegen || needsMissing)) {
+      const assetPath = await resolveDesignAssetPath(designRow);
+      if (assetPath) {
+        await generateProductMockups(
+          id,
+          assetPath,
+          undefined,
+          needsMissing && !needsFullRegen ? missingProductIds : null
+        );
+        const refreshed = await getDesignMockups([id]);
+        mockups = refreshed.get(id) || [];
+      } else {
+        console.warn("design detail mockup regen: no asset found for design", id);
+      }
+    }
     const remera =
       mockups.find((m) => (m.product_name || "").toLowerCase().includes("remera")) ||
       mockups[0] ||
       null;
     res.json({
-      ...q.rows[0],
+      ...designRow,
       mockups,
       mockup_remera: remera ? remera.image_url : null
     });
