@@ -20,19 +20,21 @@ export async function ensureDesigner(userId, client) {
   if (existing.rows[0]) return existing.rows[0];
 
   const info = await db.query(
-    `SELECT username, name FROM users WHERE id=$1`,
+    `SELECT username, name, email, avatar_url FROM users WHERE id=$1`,
     [userId]
   );
   const display =
     info.rows[0]?.username ||
     info.rows[0]?.name ||
+    info.rows[0]?.email ||
     `Designer-${String(userId).slice(0, 8)}`;
+  const avatarUrl = info.rows[0]?.avatar_url || DEFAULT_AVATAR;
 
   const inserted = await db.query(
     `INSERT INTO designers (user_id, display_name, avatar_url)
      VALUES ($1,$2,$3)
      RETURNING id, user_id, display_name, avatar_url`,
-    [userId, display, DEFAULT_AVATAR]
+    [userId, display, avatarUrl]
   );
   return inserted.rows[0];
 }

@@ -6,7 +6,7 @@ import fs from "fs";
 import sharp from "sharp";
 import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
-import { ensureDesigner, DEFAULT_AVATAR, getDesignerByUser } from "../lib/designerService.js";
+import { ensureDesigner, DEFAULT_AVATAR } from "../lib/designerService.js";
 import { ensureOrderSchema } from "../lib/orderService.js";
 
 const router = Router();
@@ -66,13 +66,14 @@ async function buildProfile(userId) {
             u.username,
             u.role,
             u.use_preference,
+            u.avatar_url AS user_avatar_url,
             u.persona_id,
             p.first_name,
             p.last_name,
             p.dni,
             d.id AS designer_id,
             d.display_name,
-            d.avatar_url
+            d.avatar_url AS designer_avatar_url
      FROM users u
      LEFT JOIN personas p ON p.id = u.persona_id
      LEFT JOIN designers d ON d.user_id = u.id
@@ -101,7 +102,7 @@ async function buildProfile(userId) {
     designer: {
       id: row.designer_id,
       display_name: row.display_name || row.username || row.email,
-      avatar_url: normalizeAvatar(row.avatar_url),
+      avatar_url: normalizeAvatar(row.user_avatar_url || row.designer_avatar_url),
       stats
     }
   };
@@ -247,7 +248,7 @@ router.get("/", async (req, res) => {
         u.username,
         u.name,
         COALESCE(NULLIF(TRIM(g.display_name), ''), u.username, u.name, 'Anónimo') AS display_name,
-        g.avatar_url,
+        COALESCE(NULLIF(TRIM(u.avatar_url), ''), NULLIF(TRIM(g.avatar_url), '')) AS avatar_url,
         COALESCE(s.designs_count, 0)::int AS designs_count,
         COALESCE(s.likes_count, 0)::int AS likes_count,
         COALESCE(s.last_design_at, g.created_at) AS last_design_at,
@@ -314,7 +315,7 @@ router.get("/featured", async (req, res) => {
        SELECT g.id,
               COALESCE(NULLIF(TRIM(g.display_name), ''), u.username, u.name, 'Anónimo') AS display_name,
               u.username,
-              COALESCE(NULLIF(TRIM(g.avatar_url), ''), '/img/uploads/avatars/default.png')           AS avatar_url,
+              COALESCE(NULLIF(TRIM(u.avatar_url), ''), NULLIF(TRIM(g.avatar_url), ''), '/img/uploads/avatars/default.png') AS avatar_url,
               COALESCE(agg.likes, 0)::int                                              AS likes,
               COALESCE(agg.designs_count, 0)::int                                       AS designs_count
        FROM designers g
@@ -368,7 +369,7 @@ router.get("/profile/:username", async (req, res) => {
               u.username,
               COALESCE(s.designs, 0)::int AS designs_count,
               COALESCE(s.likes, 0)::int   AS likes_count,
-              COALESCE(NULLIF(TRIM(g.avatar_url), ''), $1) AS avatar_url,
+              COALESCE(NULLIF(TRIM(u.avatar_url), ''), NULLIF(TRIM(g.avatar_url), ''), $1) AS avatar_url,
               u.created_at
        FROM users u
        JOIN designers g ON g.user_id = u.id
@@ -638,8 +639,16 @@ router.put(
       if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
       const userId = req.user.id;
       const designer = await ensureDesigner(userId);
-      const current = await getDesignerByUser(userId);
-      const prevUrl = current?.avatar_url || "";
+      const current = await pool.query(
+        `SELECT u.avatar_url AS user_avatar_url, d.avatar_url AS designer_avatar_url
+           FROM users u
+           LEFT JOIN designers d ON d.user_id = u.id
+          WHERE u.id = $1
+          LIMIT 1`,
+        [userId]
+      );
+      const prevUrl =
+        current.rows[0]?.user_avatar_url || current.rows[0]?.designer_avatar_url || "";
 
       const outputName = `${designer.id}-${Date.now()}.jpg`;
       const outputPath = path.join(avatarsDir, outputName);
@@ -650,6 +659,10 @@ router.put(
       await fs.promises.writeFile(outputPath, buffer);
       const url = `/img/uploads/avatars/${outputName}`;
 
+      await pool.query(
+        `UPDATE users SET avatar_url=$1 WHERE id=$2`,
+        [url, userId]
+      );
       await pool.query(
         `UPDATE designers SET avatar_url=$1 WHERE id=$2`,
         [url, designer.id]
