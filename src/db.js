@@ -1,7 +1,7 @@
 // src/db.js  (versión sin CITEXT)
 import "dotenv/config";
 import pg from "pg";
-import bcrypt from "bcryptjs";
+import { runMigrations } from "./db/migrations.js";
 
 const { Pool } = pg;
 
@@ -9,99 +9,6 @@ export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false
 });
-
-const DEFAULT_AVATAR = "/img/uploads/avatars/default.png";
-const CATEGORY_SEED = [
-  {
-    name: "Ilustración digital",
-    slug: "ilustracion-digital",
-    description: "Arte vectorial, retratos digitales y gráficos coloridos."
-  },
-  {
-    name: "Tipografía & frases",
-    slug: "tipografia",
-    description: "Lettering, frases motivacionales y caligrafía moderna."
-  },
-  {
-    name: "Naturaleza y botánica",
-    slug: "naturaleza",
-    description: "Flores, hojas y paisajes relajantes."
-  },
-  {
-    name: "Geométrico / abstracto",
-    slug: "abstracto",
-    description: "Figuras geométricas, gradientes y composiciones audaces."
-  },
-  {
-    name: "Geek & retro",
-    slug: "geek",
-    description: "Videojuegos, nostalgia pixel art y cultura pop."
-  },
-  {
-    name: "Otros",
-    slug: "otros",
-    description: "Categoría comodín para diseños experimentales."
-  }
-];
-
-const USER_SEED = [
-  {
-    email: "admin@ludus.dev",
-    username: "admin",
-    name: "Lucía Admin",
-    role: "admin",
-    display_name: "Lucía Admin",
-    avatar: "/img/disenador1.jpg",
-    password: process.env.SEED_ADMIN_PASSWORD || "admin1234",
-    use_preference: "upload",
-    persona: { first_name: "Lucía", last_name: "Admin", dni: "90000001" }
-  },
-  {
-    email: "creativa@ludus.dev",
-    username: "creativa",
-    name: "Mariana Creativa",
-    role: "designer",
-    display_name: "Mariana Creativa",
-    avatar: "/img/disenador2.jpg",
-    password: process.env.SEED_DESIGNER_PASSWORD || "designer123",
-    use_preference: "upload",
-    persona: { first_name: "Mariana", last_name: "Creativa", dni: "90000002" }
-  }
-];
-
-const DESIGN_SEED = [
-  {
-    title: "Flores en Azules",
-    description: "Ilustración botánica pensada para remeras y tote bags.",
-    image_url: "/img/diseno1.jpg",
-    category_slug: "naturaleza",
-    designer_username: "creativa"
-  },
-  {
-    title: "Tipografía Urban",
-    description: "Lettering moderno ideal para buzos o posters.",
-    image_url: "/img/diseno4.jpg",
-    category_slug: "tipografia",
-    designer_username: "creativa"
-  },
-  {
-    title: "Geometría Pastel",
-    description: "Composición abstracta en tonos pastel para mates o tazas.",
-    image_url: "/img/diseno7.jpg",
-    category_slug: "abstracto",
-    designer_username: "creativa"
-  },
-  {
-    title: "Retro Pixels",
-    description: "Personaje retro inspirado en los videojuegos de 8 bits.",
-    image_url: "/img/diseno3.jpg",
-    category_slug: "geek",
-    designer_username: "creativa"
-  }
-];
-
-const cleanDni = (value) => (value ?? "").toString().replace(/\D/g, "").slice(0, 20);
-const lower = (value) => (typeof value === "string" ? value.trim().toLowerCase() : "");
 
 const bootstrap = async () => {
   try {
@@ -169,6 +76,12 @@ const bootstrap = async () => {
       stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
       image_url TEXT,
       published BOOLEAN NOT NULL DEFAULT false,
+      curve_x_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      curve_y_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      curve_top_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      curve_bottom_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      curve_left_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      curve_right_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
       mockup_config JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -181,15 +94,83 @@ const bootstrap = async () => {
       ADD COLUMN IF NOT EXISTS mockup_config JSONB;
   `);
   await pool.query(`
+    ALTER TABLE products
+      ADD COLUMN IF NOT EXISTS curve_x_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS curve_y_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS curve_top_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS curve_bottom_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS curve_left_pct NUMERIC(5,4) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS curve_right_pct NUMERIC(5,4) NOT NULL DEFAULT 0;
+  `);
+  await pool.query(`
     UPDATE products
        SET mockup_config = jsonb_build_object(
          'width_pct', 0.45,
          'height_pct', 0.45,
-         'top_pct', 0.18,
+         'top_pct', 0.5,
          'left_pct', 0.5,
+         'curve_top_pct', 0,
+         'curve_bottom_pct', 0,
+         'curve_left_pct', 0,
+         'curve_right_pct', 0,
+         'curve_x_pct', 0,
+         'curve_y_pct', 0,
          'blend', 'multiply'
        )
      WHERE mockup_config IS NULL;
+  `);
+  await pool.query(`
+    UPDATE products
+       SET curve_x_pct = COALESCE(
+             (mockup_config->>'curve_x_pct')::numeric,
+             (mockup_config->>'curve_left_pct')::numeric,
+             curve_x_pct,
+             0
+           ),
+           curve_y_pct = COALESCE(
+             (mockup_config->>'curve_y_pct')::numeric,
+             (mockup_config->>'curve_top_pct')::numeric,
+             curve_y_pct,
+             0
+           ),
+           curve_top_pct = COALESCE((mockup_config->>'curve_top_pct')::numeric, curve_top_pct, curve_y_pct, 0),
+           curve_bottom_pct = COALESCE((mockup_config->>'curve_bottom_pct')::numeric, curve_bottom_pct, curve_y_pct, 0),
+           curve_left_pct = COALESCE((mockup_config->>'curve_left_pct')::numeric, curve_left_pct, curve_x_pct, 0),
+           curve_right_pct = COALESCE((mockup_config->>'curve_right_pct')::numeric, curve_right_pct, curve_x_pct, 0);
+  `);
+  await pool.query(`
+    UPDATE products
+       SET mockup_config = jsonb_set(
+             jsonb_set(
+               jsonb_set(
+                 jsonb_set(
+                   jsonb_set(
+                     jsonb_set(
+                       COALESCE(mockup_config, '{}'::jsonb),
+                       '{curve_left_pct}',
+                       to_jsonb(curve_left_pct),
+                       true
+                     ),
+                     '{curve_right_pct}',
+                     to_jsonb(curve_right_pct),
+                     true
+                   ),
+                   '{curve_top_pct}',
+                   to_jsonb(curve_top_pct),
+                   true
+                 ),
+                 '{curve_bottom_pct}',
+                 to_jsonb(curve_bottom_pct),
+                 true
+               ),
+               '{curve_x_pct}',
+               to_jsonb(curve_x_pct),
+               true
+             ),
+             '{curve_y_pct}',
+             to_jsonb(curve_y_pct),
+             true
+           );
   `);
 
   await pool.query(`
@@ -199,20 +180,6 @@ const bootstrap = async () => {
       image_url TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (design_id, product_id)
-    );
-  `);
-
-  await pool.query(`
-    INSERT INTO products (name, description, price, stock, image_url, published, mockup_config)
-    SELECT 'Remera básica',
-           'Remera blanca lista para personalizar con tus diseños.',
-           14999,
-           25,
-           '/img/productos/producto-remera.jpg',
-           TRUE,
-           jsonb_build_object('width_pct',0.45,'height_pct',0.45,'top_pct',0.18,'left_pct',0.5,'blend','multiply')
-    WHERE NOT EXISTS (
-      SELECT 1 FROM products WHERE LOWER(name) = 'remera básica'
     );
   `);
 
@@ -347,180 +314,10 @@ const runSupplementalMigrations = async () => {
   `);
 };
 
-async function ensureDefaultCategories(client) {
-  for (const cat of CATEGORY_SEED) {
-    const name = cat.name?.trim();
-    const slug = lower(cat.slug);
-    if (!name || !slug) continue;
-    await client.query(
-      `INSERT INTO categories (name, slug, description)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (slug)
-       DO UPDATE SET
-         name = EXCLUDED.name,
-         description = EXCLUDED.description,
-         active = TRUE,
-         updated_at = NOW()`,
-      [name, slug, cat.description || ""]
-    );
-  }
-}
-
-async function ensurePersonaRecord(client, persona = {}) {
-  const dni = cleanDni(persona.dni);
-  if (!dni) return null;
-  const existing = await client.query(
-    `SELECT id FROM personas WHERE dni = $1 LIMIT 1`,
-    [dni]
-  );
-  if (existing.rowCount) return existing.rows[0].id;
-  const inserted = await client.query(
-    `INSERT INTO personas (first_name, last_name, dni)
-     VALUES ($1,$2,$3)
-     RETURNING id`,
-    [
-      persona.first_name?.trim() || "Nombre",
-      persona.last_name?.trim() || "Demo",
-      dni
-    ]
-  );
-  return inserted.rows[0].id;
-}
-
-async function ensureSeedUsers(client) {
-  const designerMap = new Map();
-  for (const seed of USER_SEED) {
-    const email = lower(seed.email);
-    if (!email) continue;
-    const existing = await client.query(
-      `SELECT id, persona_id FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1`,
-      [email]
-    );
-
-    let userId = existing.rows[0]?.id || null;
-    let personaId = existing.rows[0]?.persona_id || null;
-
-    if (!personaId && seed.persona) {
-      personaId = await ensurePersonaRecord(client, seed.persona);
-      if (userId && personaId) {
-        await client.query(`UPDATE users SET persona_id=$1 WHERE id=$2`, [
-          personaId,
-          userId
-        ]);
-      }
-    }
-
-    if (!userId) {
-      const persona = seed.persona
-        ? await ensurePersonaRecord(client, seed.persona)
-        : null;
-      const hash = await bcrypt.hash(seed.password || "changeme123", 10);
-      const inserted = await client.query(
-        `INSERT INTO users (id, name, username, email, password_hash, role, use_preference, persona_id, banned, avatar_url)
-         VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,$6,$7,FALSE,$8)
-         RETURNING id`,
-        [
-          seed.name || seed.display_name || "Usuario Demo",
-          seed.username,
-          email,
-          hash,
-          seed.role || "buyer",
-          seed.use_preference || (seed.role === "designer" ? "upload" : "buy"),
-          persona,
-          seed.avatar || DEFAULT_AVATAR
-        ]
-      );
-      userId = inserted.rows[0].id;
-    }
-
-    const shouldCreateDesigner = seed.role !== "buyer";
-    if (shouldCreateDesigner) {
-      const designer = await client.query(
-        `INSERT INTO designers (user_id, display_name, avatar_url)
-         VALUES ($1,$2,$3)
-         ON CONFLICT (user_id)
-         DO UPDATE SET
-           display_name = EXCLUDED.display_name,
-           avatar_url = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), designers.avatar_url)
-         RETURNING id`,
-        [
-          userId,
-          seed.display_name || seed.name || seed.username || "Diseñador",
-          seed.avatar || DEFAULT_AVATAR
-        ]
-      );
-      const key = lower(seed.username) || email;
-      designerMap.set(key, designer.rows[0].id);
-      designerMap.set(email, designer.rows[0].id);
-    }
-  }
-  return designerMap;
-}
-
-async function ensureSeedDesigns(client, { categoryMap, designerMap }) {
-  if (!designerMap || !designerMap.size) return;
-  for (const design of DESIGN_SEED) {
-    const title = design.title?.trim();
-    const designerId =
-      designerMap.get(lower(design.designer_username)) ||
-      designerMap.get(lower(design.designer_email));
-    if (!title || !designerId) continue;
-
-    const catId =
-      categoryMap.get(lower(design.category_slug)) ||
-      categoryMap.get("otros") ||
-      null;
-
-    await client.query(
-      `INSERT INTO designs (designer_id, title, description, image_url, thumbnail_url, published, review_status, category_id)
-       SELECT $1,$2,$3,$4,$5, TRUE, 'approved', $6
-       WHERE NOT EXISTS (
-         SELECT 1 FROM designs WHERE LOWER(title) = LOWER($2)
-       )`,
-      [
-        designerId,
-        title,
-        (design.description || "").trim(),
-        design.image_url || "/img/diseno1.jpg",
-        design.thumbnail_url || design.image_url || "/img/diseno1.jpg",
-        catId
-      ]
-    );
-  }
-}
-
-async function buildCategoryMap(client) {
-  const { rows } = await client.query(
-    `SELECT id, LOWER(slug) AS slug FROM categories`
-  );
-  const map = new Map();
-  for (const row of rows) {
-    if (row.slug) map.set(row.slug, row.id);
-  }
-  return map;
-}
-
-const seedInitialData = async () => {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await ensureDefaultCategories(client);
-    const designerMap = await ensureSeedUsers(client);
-    const categoryMap = await buildCategoryMap(client);
-    await ensureSeedDesigns(client, { categoryMap, designerMap });
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
-    console.error("seedInitialData", err);
-  } finally {
-    client.release();
-  }
-};
-
 try {
   await bootstrap();
   await runSupplementalMigrations();
-  await seedInitialData();
+  await runMigrations(pool);
 } catch (err) {
   console.error("Error bootstrap DB:", err);
 }

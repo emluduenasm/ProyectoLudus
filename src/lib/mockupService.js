@@ -27,8 +27,12 @@ function withCacheBuster(url, versionSource) {
 const DEFAULT_CONFIG = {
   width_pct: 0.45,
   height_pct: 0.45,
-  top_pct: 0.18,
+  top_pct: 0.5,
   left_pct: 0.5,
+  curve_top_pct: 0,
+  curve_bottom_pct: 0,
+  curve_left_pct: 0,
+  curve_right_pct: 0,
   blend: "multiply"
 };
 
@@ -48,6 +52,32 @@ function normalizeConfig(raw) {
   );
   const left = clamp(Number(cfg.left_pct), 0, 1, DEFAULT_CONFIG.left_pct);
   const top = clamp(Number(cfg.top_pct), 0, 1, DEFAULT_CONFIG.top_pct);
+  const legacyX = Number(cfg.curve_x_pct);
+  const legacyY = Number(cfg.curve_y_pct);
+  const curveTop = clamp(
+    Number(cfg.curve_top_pct),
+    -1,
+    1,
+    Number.isFinite(legacyY) ? legacyY : DEFAULT_CONFIG.curve_top_pct
+  );
+  const curveBottom = clamp(
+    Number(cfg.curve_bottom_pct),
+    -1,
+    1,
+    Number.isFinite(legacyY) ? legacyY : DEFAULT_CONFIG.curve_bottom_pct
+  );
+  const curveLeft = clamp(
+    Number(cfg.curve_left_pct),
+    -1,
+    1,
+    Number.isFinite(legacyX) ? legacyX : DEFAULT_CONFIG.curve_left_pct
+  );
+  const curveRight = clamp(
+    Number(cfg.curve_right_pct),
+    -1,
+    1,
+    Number.isFinite(legacyX) ? legacyX : DEFAULT_CONFIG.curve_right_pct
+  );
   const blend =
     typeof cfg.blend === "string" && cfg.blend.trim()
       ? cfg.blend.trim()
@@ -61,10 +91,103 @@ function normalizeConfig(raw) {
     height_pct: height,
     top_pct: top,
     left_pct: left,
+    curve_top_pct: curveTop,
+    curve_bottom_pct: curveBottom,
+    curve_left_pct: curveLeft,
+    curve_right_pct: curveRight,
     blend,
     opacity,
     angle
   };
+}
+
+function clampSigned(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(-1, value));
+}
+
+function sampleBilinearRGBA(data, width, height, x, y, out, outIdx) {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(width - 1, x0 + 1);
+  const y1 = Math.min(height - 1, y0 + 1);
+  const tx = x - x0;
+  const ty = y - y0;
+
+  const idx00 = (y0 * width + x0) * 4;
+  const idx10 = (y0 * width + x1) * 4;
+  const idx01 = (y1 * width + x0) * 4;
+  const idx11 = (y1 * width + x1) * 4;
+
+  for (let c = 0; c < 4; c += 1) {
+    const top = data[idx00 + c] * (1 - tx) + data[idx10 + c] * tx;
+    const bottom = data[idx01 + c] * (1 - tx) + data[idx11 + c] * tx;
+    out[outIdx + c] = Math.round(top * (1 - ty) + bottom * ty);
+  }
+}
+
+async function applyCurvatureToOverlay(overlayBuffer, curves = {}) {
+  const curveTop = clampSigned(Number(curves.curve_top_pct));
+  const curveBottom = clampSigned(Number(curves.curve_bottom_pct));
+  const curveLeft = clampSigned(Number(curves.curve_left_pct));
+  const curveRight = clampSigned(Number(curves.curve_right_pct));
+  if (curveTop === 0 && curveBottom === 0 && curveLeft === 0 && curveRight === 0) {
+    return overlayBuffer;
+  }
+
+  const { data, info } = await sharp(overlayBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const width = info.width || 0;
+  const height = info.height || 0;
+  if (!width || !height) return overlayBuffer;
+
+  const out = Buffer.alloc(width * height * 4);
+  const maxX = Math.max(1, width - 1);
+  const maxY = Math.max(1, height - 1);
+  const maxInsetX = 0.42; // proportion of half-width
+  const maxInsetY = 0.42; // proportion of half-height
+
+  const profile = (v, c) => (c >= 0 ? (1 - v * v) : (v * v));
+
+  for (let y = 0; y < height; y += 1) {
+    const ny = (y / maxY) * 2 - 1;
+    for (let x = 0; x < width; x += 1) {
+      const nx = (x / maxX) * 2 - 1;
+      const outIdx = (y * width + x) * 4;
+
+      // Curved inner bounds: when outside, pixel becomes transparent.
+      const insetLeft = Math.abs(curveLeft) * maxInsetX * profile(ny, curveLeft);
+      const insetRight = Math.abs(curveRight) * maxInsetX * profile(ny, curveRight);
+      const insetTop = Math.abs(curveTop) * maxInsetY * profile(nx, curveTop);
+      const insetBottom = Math.abs(curveBottom) * maxInsetY * profile(nx, curveBottom);
+
+      const boundLeft = -1 + insetLeft;
+      const boundRight = 1 - insetRight;
+      const boundTop = -1 + insetTop;
+      const boundBottom = 1 - insetBottom;
+      if (nx < boundLeft || nx > boundRight || ny < boundTop || ny > boundBottom) {
+        out[outIdx] = 0;
+        out[outIdx + 1] = 0;
+        out[outIdx + 2] = 0;
+        out[outIdx + 3] = 0;
+        continue;
+      }
+
+      // Remap from curved target area back to full source image.
+      const widthSpan = Math.max(1e-6, boundRight - boundLeft);
+      const heightSpan = Math.max(1e-6, boundBottom - boundTop);
+      const srcNx = ((nx - boundLeft) / widthSpan) * 2 - 1;
+      const srcNy = ((ny - boundTop) / heightSpan) * 2 - 1;
+      const srcX = ((Math.max(-1, Math.min(1, srcNx)) + 1) * maxX) / 2;
+      const srcY = ((Math.max(-1, Math.min(1, srcNy)) + 1) * maxY) / 2;
+      sampleBilinearRGBA(data, width, height, srcX, srcY, out, outIdx);
+    }
+  }
+
+  return sharp(out, { raw: { width, height, channels: 4 } }).png().toBuffer();
 }
 
 function resolveTemplatePath(imageUrl) {
@@ -84,7 +207,7 @@ async function listMockupTemplates(client = pool, filterIds = null) {
     where += ` AND id = ANY($${params.length}::uuid[])`;
   }
   const { rows } = await client.query(
-    `SELECT id, name, image_url, mockup_config
+    `SELECT id, name, image_url, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config
        FROM products
       ${where}`,
     params
@@ -102,7 +225,21 @@ async function listMockupTemplates(client = pool, filterIds = null) {
       product_id: row.id,
       product_name: row.name,
       templatePath,
-      config: normalizeConfig(row.mockup_config)
+      config: normalizeConfig({
+        ...(row.mockup_config || {}),
+        curve_left_pct: Number.isFinite(Number(row.curve_left_pct))
+          ? Number(row.curve_left_pct)
+          : (Number.isFinite(Number(row.curve_x_pct)) ? Number(row.curve_x_pct) : row?.mockup_config?.curve_left_pct),
+        curve_right_pct: Number.isFinite(Number(row.curve_right_pct))
+          ? Number(row.curve_right_pct)
+          : (Number.isFinite(Number(row.curve_x_pct)) ? Number(row.curve_x_pct) : row?.mockup_config?.curve_right_pct),
+        curve_top_pct: Number.isFinite(Number(row.curve_top_pct))
+          ? Number(row.curve_top_pct)
+          : (Number.isFinite(Number(row.curve_y_pct)) ? Number(row.curve_y_pct) : row?.mockup_config?.curve_top_pct),
+        curve_bottom_pct: Number.isFinite(Number(row.curve_bottom_pct))
+          ? Number(row.curve_bottom_pct)
+          : (Number.isFinite(Number(row.curve_y_pct)) ? Number(row.curve_y_pct) : row?.mockup_config?.curve_bottom_pct)
+      })
     });
   }
   return templates;
@@ -135,7 +272,8 @@ async function buildComposite(templatePath, designSource, config) {
     });
   }
 
-  const overlayBuffer = await overlaySharp.png().toBuffer();
+  let overlayBuffer = await overlaySharp.png().toBuffer();
+  overlayBuffer = await applyCurvatureToOverlay(overlayBuffer, config);
   const overlayMeta = await sharp(overlayBuffer).metadata();
   const ovWidth = overlayMeta.width || overlayWidth;
   const ovHeight = overlayMeta.height || overlayHeight;
@@ -272,21 +410,6 @@ export async function getDesignMockups(designIds, client = pool) {
       price: row.price !== null ? Number(row.price) : null
     });
     map.set(row.design_id, list);
-  }
-  for (const id of designIds) {
-    if (map.has(id)) continue;
-    const legacyName = `${id}-remera.jpg`;
-    const legacyPath = path.join(mockupsDir, legacyName);
-    try {
-      await fs.promises.access(legacyPath);
-      map.set(id, [
-        {
-          product_id: null,
-          product_name: "Mockup remera",
-          image_url: `/img/uploads/mockups/${legacyName}`
-        }
-      ]);
-    } catch {}
   }
   return map;
 }

@@ -30,7 +30,27 @@
     .price{font-weight:600}
     dialog{border:none;border-radius:18px;padding:0;box-shadow:0 18px 36px rgba(15,23,42,.2)}
     dialog::backdrop{background:rgba(15,23,42,.32)}
-    .modal-card{padding:1.4rem;max-width:min(760px,95vw)}
+    .modal-card{position:relative;padding:1.4rem;max-width:min(760px,95vw);width:min(760px,95vw)}
+    .modal-close{
+      position:absolute;
+      top:.7rem;
+      right:.7rem;
+      width:34px;
+      height:34px;
+      border:none;
+      border-radius:999px;
+      background:#e2e8f0;
+      color:#334155;
+      font-size:1.15rem;
+      line-height:1;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      transition:background .2s ease,color .2s ease;
+    }
+    .modal-close:hover{background:#cbd5e1;color:#0f172a}
+    .modal-close:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
     .modal-grid{display:grid;gap:1rem}
     .modal-grid label{display:flex;flex-direction:column;gap:.4rem;font-size:.92rem}
     .modal-grid input,
@@ -49,7 +69,86 @@
     .mockup-controls .mockup-control-full{grid-column:1/-1}
     .mockup-slider{font-size:inherit;color:inherit}
     .mockup-slider input{width:100%}
+    .mockup-slider-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
     .mockup-controls output{font-weight:600;color:#1e293b}
+    .wizard-head{display:grid;gap:.45rem;margin-top:-.25rem}
+    .wizard-progress{
+      --wizard-progress:0%;
+      position:relative;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      justify-content:center;
+      gap:.45rem;
+      align-items:start;
+      width:min(270px,100%);
+      margin:0 auto;
+      padding:0;
+    }
+    .wizard-progress::before{
+      content:"";
+      position:absolute;
+      left:14px;
+      right:14px;
+      top:12px;
+      height:2px;
+      background:#cbd5e1;
+      border-radius:999px;
+    }
+    .wizard-progress::after{
+      content:"";
+      position:absolute;
+      left:14px;
+      top:12px;
+      width:var(--wizard-progress);
+      height:2px;
+      background:#2563eb;
+      border-radius:999px;
+      transition:width .55s cubic-bezier(.22,.7,.2,1);
+    }
+    .wizard-step{
+      display:flex;
+      flex-direction:column;
+      gap:.2rem;
+      position:relative;
+      z-index:1;
+      color:#64748b;
+      transition:color .2s ease;
+    }
+    .wizard-step:last-child{align-items:flex-end;text-align:right}
+    .wizard-step-dot{
+      width:24px;height:24px;border-radius:999px;
+      border:2px solid #94a3b8;background:#fff;color:#64748b;
+      display:inline-flex;align-items:center;justify-content:center;
+      font-size:.72rem;font-weight:700;line-height:1;
+      transition:all .2s ease;
+    }
+    .wizard-step-title{font-size:.78rem;font-weight:700;letter-spacing:.1px}
+    .wizard-step-sub{font-size:.74rem;opacity:.9}
+    .wizard-step.is-active,
+    .wizard-step.is-done{color:#1e3a8a}
+    .wizard-step.is-active .wizard-step-dot,
+    .wizard-step.is-done .wizard-step-dot{
+      border-color:#2563eb;background:#2563eb;color:#fff;
+      box-shadow:0 0 0 4px rgba(37,99,235,.14);
+    }
+    .wizard-step.is-active .wizard-step-dot{
+      animation:wizard-pop 1.15s cubic-bezier(.18,.7,.2,1);
+    }
+    .wizard-step.is-done .wizard-step-dot{background:#1d4ed8}
+    @keyframes wizard-pop{
+      0%{transform:scale(.82)}
+      45%{transform:scale(1.2)}
+      75%{transform:scale(.96)}
+      100%{transform:scale(1)}
+    }
+    .wizard-panel[hidden]{display:none !important}
+    .wizard-head[hidden]{display:none !important}
+    .wizard-actions[hidden]{display:none !important}
+    .wizard-actions button[hidden]{display:none !important}
+    .wizard-row-2{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+    .wizard-actions{display:flex;gap:.75rem;justify-content:flex-end}
+    .modal-footer{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+    .form-actions{display:flex;gap:.75rem;justify-content:flex-end}
     .switch{appearance:none;width:44px;height:24px;background:#e2e8f0;border-radius:999px;position:relative;outline:none;cursor:pointer}
     .switch:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s ease}
     .switch:checked{background:#2563eb}
@@ -62,6 +161,13 @@
       .actions{justify-content:flex-start}
       .image-field{grid-template-columns:1fr}
       .mockup-controls{grid-template-columns:1fr}
+      .wizard-row-2{grid-template-columns:1fr}
+      .modal-footer{flex-direction:column-reverse;align-items:stretch}
+      .wizard-actions,.form-actions{justify-content:stretch}
+      .wizard-actions .btn,.form-actions .btn{width:100%}
+      .wizard-progress{grid-template-columns:1fr;gap:.55rem}
+      .wizard-progress::before,.wizard-progress::after{display:none}
+      .wizard-step:last-child{align-items:flex-start;text-align:left}
     }
   </style>
 </head>
@@ -152,53 +258,100 @@
 
     <dialog id="modal">
       <form id="formProduct" class="modal-card modal-grid" method="dialog" novalidate>
+        <button type="button" id="btnModalClose" class="modal-close" aria-label="Cerrar">×</button>
         <h2 id="modalTitle" style="margin:0">Producto</h2>
-        <input type="hidden" name="id"/>
-        <label>Nombre
-          <input name="name" required minlength="3" placeholder="Ej: Taza metálica"/>
-        </label>
-        <label>Descripción
-          <textarea name="description" placeholder="Detalles del producto"></textarea>
-        </label>
-        <label>Precio (ARS)
-          <input name="price" type="number" min="0" step="0.01" placeholder="0.00" required/>
-        </label>
-        <label>Stock disponible
-          <input name="stock" type="number" min="0" step="1" required/>
-        </label>
-        <div class="image-field">
-          <div class="mockup-preview">
-            <div class="mockup-canvas" id="mockup-canvas">
-              <img id="preview" src="" alt="Vista previa" />
-              <div class="mockup-overlay" id="mockup-overlay"></div>
+        <div class="wizard-head" id="wizardHead" hidden>
+          <div class="wizard-progress" id="wizardProgress" style="--wizard-progress:0%">
+            <div class="wizard-step is-active" id="wizardStep1">
+              <span class="wizard-step-dot">1</span>
+              <span class="wizard-step-title">Paso 1</span>
+              <span class="wizard-step-sub">Datos</span>
+            </div>
+            <div class="wizard-step" id="wizardStep2">
+              <span class="wizard-step-dot">2</span>
+              <span class="wizard-step-title">Paso 2</span>
+              <span class="wizard-step-sub">Imagen y forma</span>
             </div>
           </div>
-          <div class="mockup-controls" id="mockup-controls">
-            <label class="mockup-control-full" style="font-weight:600">Imagen principal
-              <input type="file" id="file" name="image" accept="image/png,image/jpeg,image/webp"/>
+        </div>
+        <input type="hidden" name="id"/>
+        <section id="wizardStepText" class="wizard-panel">
+          <label>Nombre
+            <input name="name" required minlength="3" placeholder="Ej: Taza metálica"/>
+          </label>
+          <label>Descripción
+            <textarea name="description" placeholder="Detalles del producto"></textarea>
+          </label>
+          <div class="wizard-row-2">
+            <label>Precio (ARS)
+              <input name="price" type="number" min="0" step="0.01" placeholder="0.00" required/>
             </label>
-            <div class="hint mockup-control-full">PNG, JPG o WEBP (máx 6MB). Si dejás vacío el campo al crear, se utilizará un marcador.</div>
-            <label class="mockup-slider">Ancho (%) <output id="mockup-width-value">45%</output>
-              <input type="range" id="mockup-width" min="5" max="90" value="45" step="1" />
-            </label>
-            <label class="mockup-slider">Alto (%) <output id="mockup-height-value">45%</output>
-              <input type="range" id="mockup-height" min="5" max="90" value="45" step="1" />
-            </label>
-            <label class="mockup-slider">Posición horizontal (%) <output id="mockup-left-value">50%</output>
-              <input type="range" id="mockup-left" min="0" max="95" value="50" step="1" />
-            </label>
-            <label class="mockup-slider">Posición vertical (%) <output id="mockup-top-value">18%</output>
-              <input type="range" id="mockup-top" min="0" max="95" value="18" step="1" />
+            <label>Stock disponible
+              <input name="stock" type="number" min="0" step="1" required/>
             </label>
           </div>
-        </div>
+        </section>
+        <section id="wizardStepImage" class="wizard-panel" hidden>
+          <div class="image-field">
+            <div class="mockup-preview">
+              <div class="mockup-canvas" id="mockup-canvas">
+                <img id="preview" src="" alt="Vista previa" />
+                <div class="mockup-overlay" id="mockup-overlay"></div>
+              </div>
+            </div>
+            <div class="mockup-controls" id="mockup-controls">
+              <label class="mockup-control-full" style="font-weight:600">Imagen principal
+                <input type="file" id="file" name="image" accept="image/png,image/jpeg,image/webp"/>
+              </label>
+              <div class="hint mockup-control-full">PNG, JPG o WEBP (máx 6MB). Campo obligatorio.</div>
+              <label class="mockup-slider">
+                <span class="mockup-slider-head"><span>Ancho (%)</span><output id="mockup-width-value">45%</output></span>
+                <input type="range" id="mockup-width" min="5" max="90" value="45" step="1" />
+              </label>
+              <label class="mockup-slider">
+                <span class="mockup-slider-head"><span>Alto (%)</span><output id="mockup-height-value">45%</output></span>
+                <input type="range" id="mockup-height" min="5" max="90" value="45" step="1" />
+              </label>
+              <label class="mockup-slider">
+                <span class="mockup-slider-head"><span>Posición horizontal (%)</span><output id="mockup-left-value">50%</output></span>
+                <input type="range" id="mockup-left" min="0" max="95" value="50" step="1" />
+              </label>
+              <label class="mockup-slider">
+                <span class="mockup-slider-head"><span>Posición vertical (%)</span><output id="mockup-top-value">50%</output></span>
+                <input type="range" id="mockup-top" min="0" max="95" value="50" step="1" />
+              </label>
+              <label class="mockup-slider">
+                <span class="mockup-slider-head"><span>Curvatura superior (%)</span><output id="mockup-curve-top-value">0%</output></span>
+                <input type="range" id="mockup-curve-top" min="-100" max="100" value="0" step="1" />
+              </label>
+              <label class="mockup-slider">
+                <span class="mockup-slider-head"><span>Curvatura inferior (%)</span><output id="mockup-curve-bottom-value">0%</output></span>
+                <input type="range" id="mockup-curve-bottom" min="-100" max="100" value="0" step="1" />
+              </label>
+              <label class="mockup-slider">
+                <span class="mockup-slider-head"><span>Curvatura izquierda (%)</span><output id="mockup-curve-left-value">0%</output></span>
+                <input type="range" id="mockup-curve-left" min="-100" max="100" value="0" step="1" />
+              </label>
+              <label class="mockup-slider">
+                <span class="mockup-slider-head"><span>Curvatura derecha (%)</span><output id="mockup-curve-right-value">0%</output></span>
+                <input type="range" id="mockup-curve-right" min="-100" max="100" value="0" step="1" />
+              </label>
+            </div>
+          </div>
+        </section>
         <label style="flex-direction:row;align-items:center;gap:.6rem">
           <input type="checkbox" class="switch" name="published" checked/> Publicado
         </label>
         <div id="formMsg" class="muted-sm" style="min-height:1.2rem"></div>
-        <div style="display:flex;gap:.75rem;justify-content:flex-end">
-          <button type="button" id="btnCancel" class="btn btn-outline">Cancelar</button>
-          <button class="btn btn-primary" id="btnSubmit"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+        <div class="modal-footer">
+          <div class="form-actions">
+            <button type="button" id="btnCancel" class="btn btn-outline">Cancelar</button>
+            <button class="btn btn-primary" id="btnSubmit"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+          </div>
+          <div class="wizard-actions" id="wizardActions" hidden>
+            <button type="button" id="btnStepBack" class="btn btn-outline">Volver</button>
+            <button type="button" id="btnStepNext" class="btn">Siguiente</button>
+          </div>
         </div>
       </form>
     </dialog>
@@ -212,6 +365,6 @@
   </footer>
 
   <script src="/js/auth-ui.js" defer></script>
-  <script src="/js/admin-products.js" defer></script>
+  <script src="/js/admin-products.js?v=20260306-edit-wizard-unified" defer></script>
 </body>
 </html>

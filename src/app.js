@@ -19,6 +19,15 @@ import "./db.js"; // inicializa conexión y crea tablas si no existen
 
 const app = express();
 
+// Required when requests pass through a reverse proxy (e.g., devcontainer/ingress)
+// so rate-limit can safely use X-Forwarded-For.
+const trustProxy = process.env.TRUST_PROXY;
+if (typeof trustProxy === "string" && trustProxy.trim() !== "") {
+  app.set("trust proxy", trustProxy === "true" ? true : trustProxy);
+} else {
+  app.set("trust proxy", 1);
+}
+
 app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());

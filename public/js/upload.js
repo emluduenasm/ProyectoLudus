@@ -229,16 +229,8 @@
       const cats = await res.json();
       fillCats(cats);
     } catch {
-      // Fallback por si el endpoint no existe aún
-      fillCats([
-        { id: "abstracto", name: "Abstracto" },
-        { id: "tipografia", name: "Tipografía" },
-        { id: "animales", name: "Animales" },
-        { id: "naturaleza", name: "Naturaleza" },
-        { id: "deportes", name: "Deportes" },
-        { id: "gaming", name: "Gaming" },
-        { id: "otros", name: "Otros" },
-      ]);
+      fillCats([]);
+      fieldError(sel, "No se pudieron cargar las categorías.");
     }
   }
 

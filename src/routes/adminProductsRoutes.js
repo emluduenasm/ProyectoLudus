@@ -80,8 +80,12 @@ async function removeMockupsForProduct(productId) {
 const DEFAULT_MOCKUP_CONFIG = {
   width_pct: 0.45,
   height_pct: 0.45,
-  top_pct: 0.18,
+  top_pct: 0.5,
   left_pct: 0.5,
+  curve_top_pct: 0,
+  curve_bottom_pct: 0,
+  curve_left_pct: 0,
+  curve_right_pct: 0,
   blend: "multiply"
 };
 
@@ -91,6 +95,20 @@ const normalizeConfig = (input) => {
   const heightRaw = Number.isFinite(input.height_pct) ? input.height_pct : width;
   const leftRaw = Number.isFinite(input.left_pct) ? input.left_pct : DEFAULT_MOCKUP_CONFIG.left_pct;
   const topRaw = Number.isFinite(input.top_pct) ? input.top_pct : DEFAULT_MOCKUP_CONFIG.top_pct;
+  const legacyCurveX = Number.isFinite(input.curve_x_pct) ? input.curve_x_pct : undefined;
+  const legacyCurveY = Number.isFinite(input.curve_y_pct) ? input.curve_y_pct : undefined;
+  const curveTopRaw = Number.isFinite(input.curve_top_pct)
+    ? input.curve_top_pct
+    : (Number.isFinite(legacyCurveY) ? legacyCurveY : DEFAULT_MOCKUP_CONFIG.curve_top_pct);
+  const curveBottomRaw = Number.isFinite(input.curve_bottom_pct)
+    ? input.curve_bottom_pct
+    : (Number.isFinite(legacyCurveY) ? legacyCurveY : DEFAULT_MOCKUP_CONFIG.curve_bottom_pct);
+  const curveLeftRaw = Number.isFinite(input.curve_left_pct)
+    ? input.curve_left_pct
+    : (Number.isFinite(legacyCurveX) ? legacyCurveX : DEFAULT_MOCKUP_CONFIG.curve_left_pct);
+  const curveRightRaw = Number.isFinite(input.curve_right_pct)
+    ? input.curve_right_pct
+    : (Number.isFinite(legacyCurveX) ? legacyCurveX : DEFAULT_MOCKUP_CONFIG.curve_right_pct);
   const blend = typeof input.blend === "string" && input.blend.trim() ? input.blend.trim() : DEFAULT_MOCKUP_CONFIG.blend;
   const angle = Number.isFinite(input.angle) ? input.angle : 0;
   const opacity = Number.isFinite(input.opacity) ? Math.min(1, Math.max(0, input.opacity)) : undefined;
@@ -99,12 +117,20 @@ const normalizeConfig = (input) => {
   const heightClamped = Math.min(0.9, Math.max(0.05, heightRaw));
   const leftClamped = Math.min(1, Math.max(0, leftRaw));
   const topClamped = Math.min(1, Math.max(0, topRaw));
+  const curveTopClamped = Math.min(1, Math.max(-1, curveTopRaw));
+  const curveBottomClamped = Math.min(1, Math.max(-1, curveBottomRaw));
+  const curveLeftClamped = Math.min(1, Math.max(-1, curveLeftRaw));
+  const curveRightClamped = Math.min(1, Math.max(-1, curveRightRaw));
 
   return {
     width_pct: widthClamped,
     height_pct: heightClamped,
     top_pct: topClamped,
     left_pct: leftClamped,
+    curve_top_pct: curveTopClamped,
+    curve_bottom_pct: curveBottomClamped,
+    curve_left_pct: curveLeftClamped,
+    curve_right_pct: curveRightClamped,
     blend,
     angle,
     ...(typeof opacity === "number" ? { opacity } : {})
@@ -119,7 +145,21 @@ const mapRow = (row) => ({
   stock: row.stock ?? 0,
   image_url: row.image_url || "",
   published: row.published ?? false,
-  mockup_config: normalizeConfig(row.mockup_config),
+  mockup_config: normalizeConfig({
+    ...(row.mockup_config || {}),
+    curve_left_pct: Number.isFinite(Number(row?.curve_left_pct))
+      ? Number(row.curve_left_pct)
+      : (Number.isFinite(Number(row?.curve_x_pct)) ? Number(row.curve_x_pct) : row?.mockup_config?.curve_left_pct),
+    curve_right_pct: Number.isFinite(Number(row?.curve_right_pct))
+      ? Number(row.curve_right_pct)
+      : (Number.isFinite(Number(row?.curve_x_pct)) ? Number(row.curve_x_pct) : row?.mockup_config?.curve_right_pct),
+    curve_top_pct: Number.isFinite(Number(row?.curve_top_pct))
+      ? Number(row.curve_top_pct)
+      : (Number.isFinite(Number(row?.curve_y_pct)) ? Number(row.curve_y_pct) : row?.mockup_config?.curve_top_pct),
+    curve_bottom_pct: Number.isFinite(Number(row?.curve_bottom_pct))
+      ? Number(row.curve_bottom_pct)
+      : (Number.isFinite(Number(row?.curve_y_pct)) ? Number(row.curve_y_pct) : row?.mockup_config?.curve_bottom_pct)
+  }),
   created_at: row.created_at,
   updated_at: row.updated_at
 });
@@ -139,11 +179,29 @@ function parseMockupConfigFromBody(body, fallback) {
   const height = maybeNumber("mockup_height_pct", 0.05, 0.9);
   const left = maybeNumber("mockup_left_pct", 0, 1);
   const top = maybeNumber("mockup_top_pct", 0, 1);
+  const curveTop = maybeNumber("mockup_curve_top_pct", -1, 1);
+  const curveBottom = maybeNumber("mockup_curve_bottom_pct", -1, 1);
+  const curveLeft = maybeNumber("mockup_curve_left_pct", -1, 1);
+  const curveRight = maybeNumber("mockup_curve_right_pct", -1, 1);
+  const legacyCurveX = maybeNumber("mockup_curve_x_pct", -1, 1);
+  const legacyCurveY = maybeNumber("mockup_curve_y_pct", -1, 1);
 
   if (typeof width === "number") base.width_pct = width;
   if (typeof height === "number") base.height_pct = height;
   if (typeof left === "number") base.left_pct = left;
   if (typeof top === "number") base.top_pct = top;
+  if (typeof curveTop === "number") base.curve_top_pct = curveTop;
+  if (typeof curveBottom === "number") base.curve_bottom_pct = curveBottom;
+  if (typeof curveLeft === "number") base.curve_left_pct = curveLeft;
+  if (typeof curveRight === "number") base.curve_right_pct = curveRight;
+  if (typeof legacyCurveX === "number") {
+    if (typeof curveLeft !== "number") base.curve_left_pct = legacyCurveX;
+    if (typeof curveRight !== "number") base.curve_right_pct = legacyCurveX;
+  }
+  if (typeof legacyCurveY === "number") {
+    if (typeof curveTop !== "number") base.curve_top_pct = legacyCurveY;
+    if (typeof curveBottom !== "number") base.curve_bottom_pct = legacyCurveY;
+  }
 
   return normalizeConfig(base);
 }
@@ -197,7 +255,7 @@ router.get("/", ...onlyAdmin, async (req, res) => {
     else if (sort === "name_asc") orderSql = "name ASC";
 
     const rowsQ = await pool.query(
-      `SELECT id, name, description, price, stock, image_url, published, mockup_config, created_at, updated_at
+      `SELECT id, name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config, created_at, updated_at
        FROM products
        ${whereSql}
        ORDER BY ${orderSql}
@@ -271,9 +329,9 @@ router.post(
 
     try {
       const insert = await pool.query(
-        `INSERT INTO products (name, description, price, stock, image_url, published, mockup_config)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
-         RETURNING id, name, description, price, stock, image_url, published, mockup_config, created_at, updated_at`,
+        `INSERT INTO products (name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         RETURNING id, name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config, created_at, updated_at`,
         [
           cleanName,
           (description || "").toString().trim(),
@@ -281,6 +339,12 @@ router.post(
           numericStock,
           imageUrl,
           parseBoolean(published, false),
+          ((mockupConfig.curve_left_pct ?? 0) + (mockupConfig.curve_right_pct ?? 0)) / 2,
+          ((mockupConfig.curve_top_pct ?? 0) + (mockupConfig.curve_bottom_pct ?? 0)) / 2,
+          mockupConfig.curve_top_pct ?? 0,
+          mockupConfig.curve_bottom_pct ?? 0,
+          mockupConfig.curve_left_pct ?? 0,
+          mockupConfig.curve_right_pct ?? 0,
           mockupConfig
         ]
       );
@@ -314,7 +378,7 @@ router.patch(
     const { id } = req.params;
     try {
       const prevQ = await pool.query(
-        `SELECT id, name, description, price, stock, image_url, published, mockup_config
+        `SELECT id, name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config
          FROM products
          WHERE id = $1
          LIMIT 1`,
@@ -371,15 +435,42 @@ router.patch(
       }
 
       let configChanged = false;
+      const prevConfig = {
+        ...(prev.mockup_config || {}),
+        curve_left_pct: Number.isFinite(Number(prev.curve_left_pct))
+          ? Number(prev.curve_left_pct)
+          : (Number.isFinite(Number(prev.curve_x_pct)) ? Number(prev.curve_x_pct) : prev?.mockup_config?.curve_left_pct),
+        curve_right_pct: Number.isFinite(Number(prev.curve_right_pct))
+          ? Number(prev.curve_right_pct)
+          : (Number.isFinite(Number(prev.curve_x_pct)) ? Number(prev.curve_x_pct) : prev?.mockup_config?.curve_right_pct),
+        curve_top_pct: Number.isFinite(Number(prev.curve_top_pct))
+          ? Number(prev.curve_top_pct)
+          : (Number.isFinite(Number(prev.curve_y_pct)) ? Number(prev.curve_y_pct) : prev?.mockup_config?.curve_top_pct),
+        curve_bottom_pct: Number.isFinite(Number(prev.curve_bottom_pct))
+          ? Number(prev.curve_bottom_pct)
+          : (Number.isFinite(Number(prev.curve_y_pct)) ? Number(prev.curve_y_pct) : prev?.mockup_config?.curve_bottom_pct)
+      };
       if (
         Object.prototype.hasOwnProperty.call(req.body, "mockup_width_pct") ||
         Object.prototype.hasOwnProperty.call(req.body, "mockup_height_pct") ||
         Object.prototype.hasOwnProperty.call(req.body, "mockup_left_pct") ||
-        Object.prototype.hasOwnProperty.call(req.body, "mockup_top_pct")
+        Object.prototype.hasOwnProperty.call(req.body, "mockup_top_pct") ||
+        Object.prototype.hasOwnProperty.call(req.body, "mockup_curve_top_pct") ||
+        Object.prototype.hasOwnProperty.call(req.body, "mockup_curve_bottom_pct") ||
+        Object.prototype.hasOwnProperty.call(req.body, "mockup_curve_left_pct") ||
+        Object.prototype.hasOwnProperty.call(req.body, "mockup_curve_right_pct") ||
+        Object.prototype.hasOwnProperty.call(req.body, "mockup_curve_x_pct") ||
+        Object.prototype.hasOwnProperty.call(req.body, "mockup_curve_y_pct")
       ) {
-        const newConfig = parseMockupConfigFromBody(req.body, prev.mockup_config);
-        configChanged = JSON.stringify(normalizeConfig(prev.mockup_config)) !== JSON.stringify(newConfig);
+        const newConfig = parseMockupConfigFromBody(req.body, prevConfig);
+        configChanged = JSON.stringify(normalizeConfig(prevConfig)) !== JSON.stringify(newConfig);
         fields.push(`mockup_config = ${push(newConfig)}`);
+        fields.push(`curve_x_pct = ${push(((newConfig.curve_left_pct ?? 0) + (newConfig.curve_right_pct ?? 0)) / 2)}`);
+        fields.push(`curve_y_pct = ${push(((newConfig.curve_top_pct ?? 0) + (newConfig.curve_bottom_pct ?? 0)) / 2)}`);
+        fields.push(`curve_top_pct = ${push(newConfig.curve_top_pct ?? 0)}`);
+        fields.push(`curve_bottom_pct = ${push(newConfig.curve_bottom_pct ?? 0)}`);
+        fields.push(`curve_left_pct = ${push(newConfig.curve_left_pct ?? 0)}`);
+        fields.push(`curve_right_pct = ${push(newConfig.curve_right_pct ?? 0)}`);
       }
 
       const imageChanged = !!req.file;
@@ -400,7 +491,7 @@ router.patch(
         `UPDATE products
            SET ${fields.join(", ")}
          WHERE id = $${idx + 1}
-        RETURNING id, name, description, price, stock, image_url, published, mockup_config, created_at, updated_at`,
+        RETURNING id, name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config, created_at, updated_at`,
         values
       );
       const updatedRow = mapRow(updateQ.rows[0]);
@@ -422,7 +513,7 @@ router.patch(
       if (shouldRebuildAll) {
         await regenerateMockupsForProduct(id, { includeAllDesigns: true });
       } else if (configChanged) {
-        await regenerateMockupsForProduct(id);
+        await regenerateMockupsForProduct(id, { includeAllDesigns: true });
       }
 
       res.json(updatedRow);

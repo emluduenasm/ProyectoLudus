@@ -63,26 +63,52 @@ const modalTitle = $("#modalTitle");
 const previewImg = $("#preview");
 const fileInput = $("#file");
 const cancelBtn = $("#btnCancel");
+const modalCloseBtn = $("#btnModalClose");
 const submitBtn = $("#btnSubmit");
+const wizardHead = $("#wizardHead");
+const wizardProgress = $("#wizardProgress");
+const wizardStep1 = $("#wizardStep1");
+const wizardStep2 = $("#wizardStep2");
+const wizardActions = $("#wizardActions");
+const stepTextPanel = $("#wizardStepText");
+const stepImagePanel = $("#wizardStepImage");
+const btnStepBack = $("#btnStepBack");
+const btnStepNext = $("#btnStepNext");
 const mockupCanvas = $("#mockup-canvas");
 const overlayEl = $("#mockup-overlay");
 const widthInput = $("#mockup-width");
 const heightInput = $("#mockup-height");
 const leftInput = $("#mockup-left");
 const topInput = $("#mockup-top");
+const curveTopInput = $("#mockup-curve-top");
+const curveBottomInput = $("#mockup-curve-bottom");
+const curveLeftInput = $("#mockup-curve-left");
+const curveRightInput = $("#mockup-curve-right");
 const widthLabel = $("#mockup-width-value");
 const heightLabel = $("#mockup-height-value");
 const leftLabel = $("#mockup-left-value");
 const topLabel = $("#mockup-top-value");
+const curveTopLabel = $("#mockup-curve-top-value");
+const curveBottomLabel = $("#mockup-curve-bottom-value");
+const curveLeftLabel = $("#mockup-curve-left-value");
+const curveRightLabel = $("#mockup-curve-right-value");
 
 const DEFAULT_MOCKUP = {
   width_pct: 0.45,
   height_pct: 0.45,
   left_pct: 0.5,
-  top_pct: 0.18
+  top_pct: 0.5,
+  curve_top_pct: 0,
+  curve_bottom_pct: 0,
+  curve_left_pct: 0,
+  curve_right_pct: 0
 };
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
 let currentMockup = { ...DEFAULT_MOCKUP };
+let isCreateMode = true;
+let currentCreateStep = 1;
 
 if (previewImg) {
   previewImg.addEventListener("load", () => {
@@ -123,6 +149,7 @@ function setEmptyState(show) {
 const emptyPreview =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' rx='18' fill='%23e2e8f0'/%3E%3Cpath d='M48 60a32 32 0 1064 0 32 32 0 00-64 0zm32 80c-27 0-50.7-16.9-60-41l27-21 18 14 24-28 33 36c-10.5 23.5-33.7 40-60 40z' fill='%2394a3b8'/%3E%3C/svg%3E";
 let currentObjectURL = null;
+const PREVIEW_CURVE_INSET = 0.42;
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -151,12 +178,26 @@ function normalizeLocalConfig(cfg = {}) {
   );
   const left = clamp(base.left_pct, 0, 1, DEFAULT_MOCKUP.left_pct);
   const top = clamp(base.top_pct, 0, 1, DEFAULT_MOCKUP.top_pct);
+  // Backward-compat: if old x/y exist, map them into side-specific curves.
+  const fallbackSideTop = Number.isFinite(base.curve_y_pct) ? base.curve_y_pct : DEFAULT_MOCKUP.curve_top_pct;
+  const fallbackSideBottom = Number.isFinite(base.curve_y_pct) ? base.curve_y_pct : DEFAULT_MOCKUP.curve_bottom_pct;
+  const fallbackSideLeft = Number.isFinite(base.curve_x_pct) ? base.curve_x_pct : DEFAULT_MOCKUP.curve_left_pct;
+  const fallbackSideRight = Number.isFinite(base.curve_x_pct) ? base.curve_x_pct : DEFAULT_MOCKUP.curve_right_pct;
+
+  const curveTop = clamp(base.curve_top_pct, -1, 1, fallbackSideTop);
+  const curveBottom = clamp(base.curve_bottom_pct, -1, 1, fallbackSideBottom);
+  const curveLeft = clamp(base.curve_left_pct, -1, 1, fallbackSideLeft);
+  const curveRight = clamp(base.curve_right_pct, -1, 1, fallbackSideRight);
 
   return {
     width_pct: width,
     height_pct: height,
     left_pct: left,
-    top_pct: top
+    top_pct: top,
+    curve_top_pct: curveTop,
+    curve_bottom_pct: curveBottom,
+    curve_left_pct: curveLeft,
+    curve_right_pct: curveRight
   };
 }
 
@@ -173,14 +214,75 @@ function updateOverlayDisplay() {
   overlayEl.style.height = `${heightPercent.toFixed(2)}%`;
   overlayEl.style.left = `${leftPercent.toFixed(2)}%`;
   overlayEl.style.top = `${topPercent.toFixed(2)}%`;
+  overlayEl.style.borderRadius = "0";
+  overlayEl.style.clipPath = buildCurvedOverlayClipPath(
+    currentMockup.curve_top_pct,
+    currentMockup.curve_bottom_pct,
+    currentMockup.curve_left_pct,
+    currentMockup.curve_right_pct
+  );
+}
+
+function buildCurvedOverlayClipPath(curveTop = 0, curveBottom = 0, curveLeft = 0, curveRight = 0) {
+  const ct = clamp(Number(curveTop), -1, 1, 0);
+  const cb = clamp(Number(curveBottom), -1, 1, 0);
+  const cl = clamp(Number(curveLeft), -1, 1, 0);
+  const cr = clamp(Number(curveRight), -1, 1, 0);
+  if (ct === 0 && cb === 0 && cl === 0 && cr === 0) return "none";
+
+  const seg = 18;
+  const points = [];
+  const profile = (v, c) => (c >= 0 ? (1 - v * v) : (v * v));
+  const insetTopAt = (nx) => Math.abs(ct) * PREVIEW_CURVE_INSET * profile(nx, ct);
+  const insetBottomAt = (nx) => Math.abs(cb) * PREVIEW_CURVE_INSET * profile(nx, cb);
+  const insetLeftAt = (ny) => Math.abs(cl) * PREVIEW_CURVE_INSET * profile(ny, cl);
+  const insetRightAt = (ny) => Math.abs(cr) * PREVIEW_CURVE_INSET * profile(ny, cr);
+
+  // Top edge (left -> right)
+  for (let i = 0; i <= seg; i += 1) {
+    const nx = (i / seg) * 2 - 1;
+    const x = i / seg;
+    const y = insetTopAt(nx) / 2;
+    points.push(`${(x * 100).toFixed(2)}% ${(y * 100).toFixed(2)}%`);
+  }
+
+  // Right edge (top -> bottom)
+  for (let i = 1; i <= seg; i += 1) {
+    const ny = (i / seg) * 2 - 1;
+    const x = 1 - insetRightAt(ny) / 2;
+    const y = i / seg;
+    points.push(`${(x * 100).toFixed(2)}% ${(y * 100).toFixed(2)}%`);
+  }
+
+  // Bottom edge (right -> left)
+  for (let i = seg - 1; i >= 0; i -= 1) {
+    const nx = (i / seg) * 2 - 1;
+    const x = i / seg;
+    const y = 1 - insetBottomAt(nx) / 2;
+    points.push(`${(x * 100).toFixed(2)}% ${(y * 100).toFixed(2)}%`);
+  }
+
+  // Left edge (bottom -> top)
+  for (let i = seg - 1; i >= 1; i -= 1) {
+    const ny = (i / seg) * 2 - 1;
+    const x = insetLeftAt(ny) / 2;
+    const y = i / seg;
+    points.push(`${(x * 100).toFixed(2)}% ${(y * 100).toFixed(2)}%`);
+  }
+
+  return `polygon(${points.join(",")})`;
 }
 
 function syncMockupInputs() {
-  if (!widthInput || !heightInput || !leftInput || !topInput) return;
+  if (!widthInput || !heightInput || !leftInput || !topInput || !curveTopInput || !curveBottomInput || !curveLeftInput || !curveRightInput) return;
   const widthValue = Math.round(currentMockup.width_pct * 100);
   const heightValue = Math.round(currentMockup.height_pct * 100);
   const leftValue = Math.round(currentMockup.left_pct * 100);
   const topValue = Math.round(currentMockup.top_pct * 100);
+  const curveTopValue = Math.round(currentMockup.curve_top_pct * 100);
+  const curveBottomValue = Math.round(currentMockup.curve_bottom_pct * 100);
+  const curveLeftValue = Math.round(currentMockup.curve_left_pct * 100);
+  const curveRightValue = Math.round(currentMockup.curve_right_pct * 100);
 
   widthInput.value = String(widthValue);
   heightInput.value = String(heightValue);
@@ -192,11 +294,19 @@ function syncMockupInputs() {
 
   leftInput.value = String(Math.round(currentMockup.left_pct * 100));
   topInput.value = String(Math.round(currentMockup.top_pct * 100));
+  curveTopInput.value = String(curveTopValue);
+  curveBottomInput.value = String(curveBottomValue);
+  curveLeftInput.value = String(curveLeftValue);
+  curveRightInput.value = String(curveRightValue);
 
   if (widthLabel) widthLabel.textContent = `${Math.round(widthInput.value)}%`;
   if (heightLabel) heightLabel.textContent = `${Math.round(heightInput.value)}%`;
   if (leftLabel) leftLabel.textContent = `${Math.round(leftInput.value)}%`;
   if (topLabel) topLabel.textContent = `${Math.round(topInput.value)}%`;
+  if (curveTopLabel) curveTopLabel.textContent = `${Math.round(curveTopInput.value)}%`;
+  if (curveBottomLabel) curveBottomLabel.textContent = `${Math.round(curveBottomInput.value)}%`;
+  if (curveLeftLabel) curveLeftLabel.textContent = `${Math.round(curveLeftInput.value)}%`;
+  if (curveRightLabel) curveRightLabel.textContent = `${Math.round(curveRightInput.value)}%`;
 }
 
 function setMockupConfig(cfg) {
@@ -206,13 +316,26 @@ function setMockupConfig(cfg) {
 }
 
 function handleRangeChange() {
-  if (!widthInput || !heightInput || !leftInput || !topInput) return;
+  if (!widthInput || !heightInput || !leftInput || !topInput || !curveTopInput || !curveBottomInput || !curveLeftInput || !curveRightInput) return;
   const width = clamp(Number(widthInput.value) / 100, 0.05, 0.9, currentMockup.width_pct);
   const height = clamp(Number(heightInput.value) / 100, 0.05, 0.9, currentMockup.height_pct);
   const left = clamp(Number(leftInput.value) / 100, 0, 1, currentMockup.left_pct);
   const top = clamp(Number(topInput.value) / 100, 0, 1, currentMockup.top_pct);
+  const curveTop = clamp(Number(curveTopInput.value) / 100, -1, 1, currentMockup.curve_top_pct);
+  const curveBottom = clamp(Number(curveBottomInput.value) / 100, -1, 1, currentMockup.curve_bottom_pct);
+  const curveLeft = clamp(Number(curveLeftInput.value) / 100, -1, 1, currentMockup.curve_left_pct);
+  const curveRight = clamp(Number(curveRightInput.value) / 100, -1, 1, currentMockup.curve_right_pct);
 
-  currentMockup = normalizeLocalConfig({ width_pct: width, height_pct: height, left_pct: left, top_pct: top });
+  currentMockup = normalizeLocalConfig({
+    width_pct: width,
+    height_pct: height,
+    left_pct: left,
+    top_pct: top,
+    curve_top_pct: curveTop,
+    curve_bottom_pct: curveBottom,
+    curve_left_pct: curveLeft,
+    curve_right_pct: curveRight
+  });
   syncMockupInputs();
   updateOverlayDisplay();
 }
@@ -236,6 +359,151 @@ function setPreviewFromUrl(url) {
     mockupCanvas.style.paddingTop = "100%";
   }
   updateOverlayDisplay();
+}
+
+function setCreateStepLabel(step) {
+  if (!wizardProgress || !wizardStep1 || !wizardStep2) return;
+  const onStep2 = step === 2;
+  wizardProgress.style.setProperty("--wizard-progress", onStep2 ? "100%" : "0%");
+  wizardStep1.classList.toggle("is-active", !onStep2);
+  wizardStep1.classList.toggle("is-done", onStep2);
+  wizardStep2.classList.toggle("is-active", onStep2);
+  wizardStep2.classList.toggle("is-done", false);
+  const activeStep = onStep2 ? wizardStep2 : wizardStep1;
+  if (activeStep) {
+    const dot = activeStep.querySelector(".wizard-step-dot");
+    if (dot) {
+      dot.style.animation = "none";
+      // Force reflow so the animation restarts on each step change
+      void dot.offsetWidth;
+      dot.style.animation = "";
+    }
+  }
+}
+
+function renderCreateStep(step) {
+  currentCreateStep = step === 2 ? 2 : 1;
+  if (stepTextPanel) stepTextPanel.hidden = currentCreateStep !== 1;
+  if (stepImagePanel) stepImagePanel.hidden = currentCreateStep !== 2;
+  if (btnStepBack) btnStepBack.hidden = currentCreateStep !== 2;
+  if (btnStepNext) btnStepNext.hidden = currentCreateStep !== 1;
+  setCreateStepLabel(currentCreateStep);
+}
+
+function validateTextStep() {
+  if (!validateNameField(true)) {
+    form.name?.reportValidity?.();
+    return false;
+  }
+  if (!validateDescriptionField(true)) {
+    form.description?.reportValidity?.();
+    return false;
+  }
+  if (!validatePriceField(true)) {
+    form.price?.reportValidity?.();
+    return false;
+  }
+  if (!validateStockField(true)) {
+    form.stock?.reportValidity?.();
+    return false;
+  }
+  return true;
+}
+
+function validateImageStep() {
+  if (!validateImageField(true)) {
+    fileInput?.reportValidity?.();
+    fileInput?.focus?.();
+    return false;
+  }
+  formMsg.textContent = "";
+  return true;
+}
+
+function setFieldState(input, isValid, touched) {
+  if (!input) return;
+  input.classList.remove("is-valid", "is-invalid");
+  if (!touched) return;
+  input.classList.add(isValid ? "is-valid" : "is-invalid");
+}
+
+function validateNameField(touched = false) {
+  const input = form?.name;
+  if (!input) return true;
+  const value = (input.value || "").trim();
+  const valid = value.length >= 3;
+  input.setCustomValidity(valid ? "" : "El nombre debe tener al menos 3 caracteres.");
+  setFieldState(input, valid, touched || value.length > 0);
+  return valid;
+}
+
+function validateDescriptionField(touched = false) {
+  const input = form?.description;
+  if (!input) return true;
+  const value = (input.value || "").trim();
+  const valid = value.length > 0;
+  input.setCustomValidity(valid ? "" : "La descripción es obligatoria.");
+  setFieldState(input, valid, touched || value.length > 0);
+  return valid;
+}
+
+function validatePriceField(touched = false) {
+  const input = form?.price;
+  if (!input) return true;
+  const raw = (input.value || "").trim();
+  const value = Number(raw);
+  const valid = raw !== "" && Number.isFinite(value) && value >= 0;
+  input.setCustomValidity(valid ? "" : "Ingresá un precio válido (mayor o igual a 0).");
+  setFieldState(input, valid, touched || raw.length > 0);
+  return valid;
+}
+
+function validateStockField(touched = false) {
+  const input = form?.stock;
+  if (!input) return true;
+  const raw = (input.value || "").trim();
+  const value = Number(raw);
+  const valid = raw !== "" && Number.isInteger(value) && value >= 0;
+  input.setCustomValidity(valid ? "" : "Ingresá un stock entero válido (0 o mayor).");
+  setFieldState(input, valid, touched || raw.length > 0);
+  return valid;
+}
+
+function validateImageField(touched = false) {
+  if (!fileInput) return true;
+  const file = fileInput.files?.[0];
+  const isCreate = Boolean(isCreateMode && !form?.id?.value);
+  let message = "";
+
+  if (!file) {
+    if (isCreate) message = "La imagen es obligatoria.";
+  } else if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+    message = "Formato no válido. Usá PNG, JPG o WEBP.";
+  } else if (file.size > MAX_IMAGE_BYTES) {
+    message = "La imagen supera los 6MB.";
+  }
+
+  fileInput.setCustomValidity(message);
+  setFieldState(fileInput, message === "", touched || Boolean(file));
+  if (touched && message) formMsg.textContent = message;
+  return message === "";
+}
+
+function resetValidationUI() {
+  [form?.name, form?.description, form?.price, form?.stock, fileInput].forEach((input) => {
+    if (!input) return;
+    input.classList.remove("is-valid", "is-invalid");
+    input.setCustomValidity("");
+  });
+}
+
+function configureModalMode(createMode) {
+  isCreateMode = Boolean(createMode);
+  // Keep the same 2-step wizard UI for both create and edit.
+  if (wizardHead) wizardHead.hidden = false;
+  if (wizardActions) wizardActions.hidden = false;
+  submitBtn.disabled = false;
+  renderCreateStep(1);
 }
 
 async function loadProducts() {
@@ -375,11 +643,13 @@ function updatePreview(file) {
 function resetForm() {
   form.reset();
   formMsg.textContent = "";
+  resetValidationUI();
   setPreviewFromUrl(null);
   if (form?.dataset) {
     form.dataset.originalImage = "";
   }
   setMockupConfig(DEFAULT_MOCKUP);
+  configureModalMode(true);
 }
 
 function openModal(product) {
@@ -389,6 +659,7 @@ function openModal(product) {
   }
   setMockupConfig(product?.mockup_config || DEFAULT_MOCKUP);
   if (product && product.id) {
+    configureModalMode(false);
     form.id.value = product.id;
     form.name.value = product.name || "";
     form.description.value = product.description || "";
@@ -398,12 +669,22 @@ function openModal(product) {
     setPreviewFromUrl(product.image_url);
     modalTitle.textContent = "Editar producto";
   } else {
+    configureModalMode(true);
     modalTitle.textContent = "Nuevo producto";
     form.published.checked = true;
   }
   if (typeof modal?.showModal === "function") {
     modal.showModal();
   }
+}
+
+function handleNextStep() {
+  if (!validateTextStep()) return;
+  renderCreateStep(2);
+}
+
+function handleBackStep() {
+  renderCreateStep(1);
 }
 
 async function confirmDelete(id, name = "") {
@@ -430,13 +711,23 @@ function closeModal() {
 
 async function submitForm(ev) {
   ev?.preventDefault?.();
+  const id = form.id.value;
+  const isEdit = Boolean(id);
+
+  if (!validateTextStep()) {
+    renderCreateStep(1);
+    return;
+  }
+  if (!validateImageStep()) {
+    renderCreateStep(2);
+    return;
+  }
+
   if (!form?.reportValidity?.()) return;
 
   submitBtn.disabled = true;
   formMsg.textContent = "Guardando…";
 
-  const id = form.id.value;
-  const isEdit = Boolean(id);
   const formData = new FormData();
   formData.set("name", form.name.value.trim());
   formData.set("description", form.description.value.trim());
@@ -457,6 +748,10 @@ async function submitForm(ev) {
   formData.set("mockup_height_pct", String(currentMockup.height_pct));
   formData.set("mockup_left_pct", String(currentMockup.left_pct));
   formData.set("mockup_top_pct", String(currentMockup.top_pct));
+  formData.set("mockup_curve_top_pct", String(currentMockup.curve_top_pct));
+  formData.set("mockup_curve_bottom_pct", String(currentMockup.curve_bottom_pct));
+  formData.set("mockup_curve_left_pct", String(currentMockup.curve_left_pct));
+  formData.set("mockup_curve_right_pct", String(currentMockup.curve_right_pct));
 
   try {
     const res = await fetch(
@@ -541,17 +836,53 @@ async function init() {
 
   controls.btnNew?.addEventListener("click", () => openModal(null));
   cancelBtn?.addEventListener("click", closeModal);
+  modalCloseBtn?.addEventListener("click", closeModal);
   form?.addEventListener("submit", submitForm);
   modal?.addEventListener("close", resetForm);
+  btnStepNext?.addEventListener("click", handleNextStep);
+  btnStepBack?.addEventListener("click", handleBackStep);
 
   fileInput?.addEventListener("change", () => {
     const file = fileInput.files?.[0];
     updatePreview(file);
+    validateImageField(true);
   });
-  widthInput?.addEventListener("input", handleRangeChange);
-  heightInput?.addEventListener("input", handleRangeChange);
-  leftInput?.addEventListener("input", handleRangeChange);
-  topInput?.addEventListener("input", handleRangeChange);
+  form?.name?.addEventListener("input", () => {
+    validateNameField(true);
+  });
+  form?.description?.addEventListener("input", () => {
+    validateDescriptionField(true);
+  });
+  form?.price?.addEventListener("input", () => {
+    validatePriceField(true);
+  });
+  form?.stock?.addEventListener("input", () => {
+    validateStockField(true);
+  });
+  widthInput?.addEventListener("input", () => {
+    handleRangeChange();
+  });
+  heightInput?.addEventListener("input", () => {
+    handleRangeChange();
+  });
+  leftInput?.addEventListener("input", () => {
+    handleRangeChange();
+  });
+  topInput?.addEventListener("input", () => {
+    handleRangeChange();
+  });
+  curveTopInput?.addEventListener("input", () => {
+    handleRangeChange();
+  });
+  curveBottomInput?.addEventListener("input", () => {
+    handleRangeChange();
+  });
+  curveLeftInput?.addEventListener("input", () => {
+    handleRangeChange();
+  });
+  curveRightInput?.addEventListener("input", () => {
+    handleRangeChange();
+  });
 
   setMockupConfig(DEFAULT_MOCKUP);
   await loadProducts();

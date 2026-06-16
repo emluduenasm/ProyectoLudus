@@ -3,8 +3,40 @@
   const $ = (s, r = document) => r.querySelector(s);
 
   const wrap = $("#designerContent");
+  const backBtn = $("#btnBack");
   const params = new URLSearchParams(location.search);
   const alias = (params.get("alias") || "").trim();
+
+  setupBackButton();
+
+  function setupBackButton() {
+    if (!backBtn) return;
+
+    let target = "/designers.html";
+    const returnTo = params.get("returnTo");
+
+    if (returnTo) {
+      try {
+        const url = new URL(returnTo, location.origin);
+        if (url.origin === location.origin && url.pathname !== "/designer.html") {
+          target = `${url.pathname}${url.search}${url.hash}`;
+        }
+      } catch {}
+    } else if (document.referrer) {
+      try {
+        const ref = new URL(document.referrer);
+        if (ref.origin === location.origin && ref.pathname !== "/designer.html") {
+          target = `${ref.pathname}${ref.search}${ref.hash}`;
+        }
+      } catch {}
+    }
+
+    backBtn.href = target;
+    backBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      location.href = target;
+    });
+  }
 
   function renderError(message) {
     if (!wrap) return;

@@ -19,7 +19,10 @@
   const token = localStorage.getItem("token") || "";
   const auth = () => (token ? { Authorization: `Bearer ${token}` } : {});
   const wrap = $("#detail");
+  const backBtn = $("#btnBack");
   const cartStore = window.CartStore || null;
+
+  setupBackButton();
 
   if (!wrap) return;
 
@@ -48,6 +51,35 @@
     }
   }
 
+  function setupBackButton() {
+    if (!backBtn) return;
+
+    let target = "/designs.html";
+    const returnTo = qs.get("returnTo");
+
+    if (returnTo) {
+      try {
+        const url = new URL(returnTo, location.origin);
+        if (url.origin === location.origin && url.pathname !== "/design.html") {
+          target = `${url.pathname}${url.search}${url.hash}`;
+        }
+      } catch {}
+    } else if (document.referrer) {
+      try {
+        const ref = new URL(document.referrer);
+        if (ref.origin === location.origin && ref.pathname !== "/design.html") {
+          target = `${ref.pathname}${ref.search}${ref.hash}`;
+        }
+      } catch {}
+    }
+
+    backBtn.href = target;
+    backBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      location.href = target;
+    });
+  }
+
   function render(d, liked = false, me = null) {
     const esc = (value) => escapeHtml(value);
     const mockups = Array.isArray(d.mockups) ? d.mockups : [];
@@ -55,7 +87,13 @@
       .map(
         (m) => `
         <div class="media-card media-card--product">
-          <img src="${m.image_url}" alt="Mockup ${esc(m.product_name || "producto")}" />
+          <button class="mockup-zoom-trigger"
+                  type="button"
+                  aria-label="Ver mockup en grande"
+                  data-mockup-zoom="${esc(m.image_url || "")}"
+                  data-mockup-alt="Mockup ${esc(m.product_name || "producto")}">
+            <img src="${m.image_url}" alt="Mockup ${esc(m.product_name || "producto")}" />
+          </button>
           <div class="media-card-body">
             <h3>${esc(m.product_name || "Mockup")}</h3>
             ${
@@ -79,7 +117,13 @@
     const fallbackMockup =
       !hasMockups && d.mockup_remera
         ? `<div class="media-card media-card--product">
-             <img src="${d.mockup_remera}" alt="Mockup remera de ${esc(d.title)}" />
+             <button class="mockup-zoom-trigger"
+                     type="button"
+                     aria-label="Ver mockup en grande"
+                     data-mockup-zoom="${esc(d.mockup_remera || "")}"
+                     data-mockup-alt="Mockup remera de ${esc(d.title)}">
+               <img src="${d.mockup_remera}" alt="Mockup remera de ${esc(d.title)}" />
+             </button>
              <div class="media-card-body">
                <h3>Mockup remera</h3>
                <button class="btn btn-primary media-cart-btn" disabled title="Disponible pronto">
@@ -92,41 +136,47 @@
     wrap.innerHTML = `
       <article class="detail-hero">
         <div class="hero-image">
-          <img src="${d.image_url}" alt="${esc(d.title)}" />
+          <button class="mockup-zoom-trigger"
+                  type="button"
+                  aria-label="Ver diseño en grande"
+                  data-mockup-zoom="${esc(d.image_url || "")}"
+                  data-mockup-alt="${esc(d.title)}">
+            <img src="${d.image_url}" alt="${esc(d.title)}" />
+          </button>
         </div>
         <div class="hero-meta">
           <div>
-            <h1 style="margin-top:0">${esc(d.title)}</h1>
-            <div class="muted">
+            <h1 class="hero-title">${esc(d.title)}</h1>
+            <div class="hero-author-line">
               por <strong>${esc(d.designer_name || "anónimo")}</strong>
               ${d.category_name ? `<span class="badge">${esc(d.category_name)}</span>` : ""}
             </div>
           </div>
-          <div class="likes" style="display:flex;align-items:center;gap:8px;margin-top:14px">
-            <button id="btnLike" class="btn btn-like ${liked ? "liked" : ""}">
-              <i class="fa-solid fa-heart"></i>
-              <span id="likeText">${liked ? "Te gusta" : "Me gusta"}</span>
-            </button>
-            <span id="likeCount" class="muted">${d.likes ?? 0}</span>
-          </div>
-          ${
-            me?.role === "admin"
-              ? `
-            <div>
+          <div class="hero-actions">
+            <div class="hero-likes">
+              <button id="btnLike" class="btn btn-like ${liked ? "liked" : ""}">
+                <i class="fa-solid fa-heart"></i>
+                <span id="likeText">${liked ? "Te gusta" : "Me gusta"}</span>
+              </button>
+              <span id="likeCount" class="hero-like-count">${d.likes ?? 0}</span>
+            </div>
+            ${
+              me?.role === "admin"
+                ? `
               <button id="btnDownload" class="btn">
                 <i class="fa-solid fa-download"></i> Descargar diseño
               </button>
-            </div>
-          `
-              : ""
-          }
-          <div style="margin-top:.5rem;">
-            <h3 style="margin-bottom:.5rem;">Descripción</h3>
-            <p id="desc" style="color:#334155;white-space:pre-wrap;">
+            `
+                : ""
+            }
+          </div>
+          <div class="hero-description-block">
+            <h3 class="hero-description-title">Descripción</h3>
+            <p id="desc" class="hero-description-text">
               ${d.description ? esc(d.description) : "Este diseño aún no tiene descripción."}
             </p>
           </div>
-          <p class="muted" style="margin-top:auto">
+          <p class="hero-published">
             Publicado: ${new Date(d.created_at).toLocaleDateString("es-AR")}
           </p>
         </div>
@@ -135,9 +185,18 @@
       <div class="detail-media">
         ${hasMockups ? mockupCards : fallbackMockup}
       </div>
+      <div id="mockupModal" class="mockup-modal" role="dialog" aria-modal="true" aria-label="Vista ampliada de mockup">
+        <div class="mockup-modal-content">
+          <button id="mockupModalClose" class="mockup-modal-close" type="button" aria-label="Cerrar vista ampliada">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+          <img id="mockupModalImage" src="" alt="Mockup ampliado" />
+        </div>
+      </div>
     `;
 
     attachCartButtons(d);
+    attachMockupZoom();
 
     $("#btnLike")?.addEventListener("click", async () => {
       if (!token) {
@@ -183,6 +242,36 @@
         }
       });
     }
+  }
+
+  function attachMockupZoom() {
+    const modal = $("#mockupModal", wrap);
+    const modalImg = $("#mockupModalImage", wrap);
+    const closeBtn = $("#mockupModalClose", wrap);
+    if (!modal || !modalImg || !closeBtn) return;
+
+    const close = () => {
+      modal.classList.remove("open");
+      modalImg.src = "";
+    };
+
+    wrap.querySelectorAll(".mockup-zoom-trigger[data-mockup-zoom]").forEach((trigger) => {
+      trigger.addEventListener("click", () => {
+        const imageUrl = trigger.dataset.mockupZoom || "";
+        if (!imageUrl) return;
+        modalImg.src = imageUrl;
+        modalImg.alt = trigger.dataset.mockupAlt || "Mockup ampliado";
+        modal.classList.add("open");
+      });
+    });
+
+    closeBtn.addEventListener("click", close);
+    modal.addEventListener("click", (ev) => {
+      if (ev.target === modal) close();
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && modal.classList.contains("open")) close();
+    });
   }
 
   function attachCartButtons(designData) {
