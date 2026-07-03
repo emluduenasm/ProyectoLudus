@@ -243,6 +243,26 @@ a:hover { color: var(--brand-strong); }
 .card .title { margin: 0 0 6px; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .meta { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 12px; }
 .badge { display: inline-block; margin-top: 6px; background: #eef2ff; color: #312e81; border-radius: 999px; padding: 2px 8px; font-size: 11px; }
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border-radius: 999px;
+  background: #ecfeff;
+  color: #155e75;
+  border: 1px solid #cffafe;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
 .muted { color: var(--muted); }
 
 /* =========================
@@ -280,8 +300,10 @@ label {
   margin-bottom: 6px;
 }
 input[type="text"],
+input[type="tel"],
 input[type="email"],
 input[type="password"],
+textarea,
 select {
   width: 100%;
   background: #f8fafc;
@@ -289,10 +311,12 @@ select {
   border-radius: 10px;
   padding: .55rem .75rem;
   font-size: 15px;
+  font-family: inherit;
   outline: none;
   transition: border-color .15s ease, box-shadow .15s ease;
 }
 input:focus,
+textarea:focus,
 select:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px rgba(44,111,178,.15);
@@ -437,8 +461,10 @@ select:focus {
 /* agrega esto junto a tus estilos de inputs */
 .input,
 input[type="text"],
+input[type="tel"],
 input[type="email"],
 input[type="password"],
+textarea,
 select {
   width: 100%;
   background: #f8fafc;
@@ -446,6 +472,7 @@ select {
   border-radius: 10px;
   padding: .55rem .75rem;
   font-size: 15px;
+  font-family: inherit;
   outline: none;
   transition: border-color .15s ease, box-shadow .15s ease;
 }

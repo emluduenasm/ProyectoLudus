@@ -42,6 +42,39 @@ const processAvatar = async (buffer, userId) => {
   };
 };
 
+const text = (value, max = 160) => String(value ?? "").trim().slice(0, max);
+const digits = (value, max = 40) => String(value ?? "").replace(/\D/g, "").slice(0, max);
+const validPayoutAlias = (value) => /^[A-Za-z0-9._-]{6,30}$/.test(value);
+const validPayoutCbu = (value) => /^\d{22}$/.test(value);
+const ARG_PROVINCES = new Set([
+  "Buenos Aires",
+  "Catamarca",
+  "Chaco",
+  "Chubut",
+  "Ciudad Autonoma de Buenos Aires",
+  "Cordoba",
+  "Corrientes",
+  "Entre Rios",
+  "Formosa",
+  "Jujuy",
+  "La Pampa",
+  "La Rioja",
+  "Mendoza",
+  "Misiones",
+  "Neuquen",
+  "Rio Negro",
+  "Salta",
+  "San Juan",
+  "San Luis",
+  "Santa Cruz",
+  "Santa Fe",
+  "Santiago del Estero",
+  "Tierra del Fuego",
+  "Tucuman"
+]);
+const normalizePostalCodeAR = (value) => text(value, 12).toUpperCase().replace(/\s+/g, "");
+const validPostalCodeAR = (value) => /^\d{4}$/.test(value) || /^[A-Z]\d{4}[A-Z]{3}$/.test(value);
+
 /**
  * POST /api/auth/register
  * body: { name, username, email, password }
@@ -69,7 +102,18 @@ router.post(
       username = "",
       email = "",
       password = "",
-      use_preference = "buy"
+      use_preference = "buy",
+      phone = "",
+      country = "Argentina",
+      province = "",
+      city = "",
+      street = "",
+      street_number = "",
+      floor_apartment = "",
+      postal_code = "",
+      shipping_notes = "",
+      payout_alias = "",
+      payout_cbu = ""
     } = req.body || {};
 
     const fn = String(first_name).trim();
@@ -77,8 +121,22 @@ router.post(
     const dniClean = String(dni).replace(/\D/g, "");
     const uname = String(username).trim();
     const emailNorm = String(email).trim().toLowerCase();
-    const usePrefNormalized = (["upload", "both"].includes(use_preference) ? "upload" : "buy");
+    const usePrefNormalized = use_preference === "upload" ? "upload" : "buy";
+    const wantsPayout = usePrefNormalized === "upload";
     const role = usePrefNormalized === "upload" ? "designer" : "buyer";
+    const address = {
+      phone: digits(phone, 10),
+      country: text(country || "Argentina", 80),
+      province: text(province, 80),
+      city: text(city, 80),
+      street: text(street, 120),
+      street_number: text(street_number, 20),
+      floor_apartment: text(floor_apartment, 80),
+      postal_code: normalizePostalCodeAR(postal_code),
+      notes: text(shipping_notes, 240)
+    };
+    const payoutAlias = text(payout_alias, 30);
+    const payoutCbu = digits(payout_cbu, 22);
 
     // Validaciones mínimas y claras
     if (!emailNorm || !password) return res.status(400).json({ error: "Email y password requeridos" });
@@ -86,6 +144,24 @@ router.post(
     if (!ln) return res.status(400).json({ error: "Apellidos requeridos" });
     if (!/^\d{8}$/.test(dniClean)) return res.status(400).json({ error: "DNI inválido (8 dígitos)" });
     if (!req.file) return res.status(400).json({ error: "La foto de perfil es obligatoria." });
+    if (address.phone.length !== 10) return res.status(400).json({ error: "Telefono argentino invalido: debe tener 10 digitos" });
+    if (!address.country || !address.province || !address.city || !address.street || !address.street_number || !address.postal_code) {
+      return res.status(400).json({ error: "Completa la direccion de contacto y facturacion" });
+    }
+    if (address.country !== "Argentina") return res.status(400).json({ error: "Por ahora solo se admiten direcciones de Argentina" });
+    if (!ARG_PROVINCES.has(address.province)) return res.status(400).json({ error: "Provincia invalida" });
+    if (!validPostalCodeAR(address.postal_code)) return res.status(400).json({ error: "Codigo postal invalido" });
+    if (wantsPayout) {
+      if (!payoutAlias && !payoutCbu) {
+        return res.status(400).json({ error: "Carga alias o CBU/CVU para cobrar comisiones" });
+      }
+      if (payoutAlias && !validPayoutAlias(payoutAlias)) {
+        return res.status(400).json({ error: "Alias de cobro invalido" });
+      }
+      if (payoutCbu && !validPayoutCbu(payoutCbu)) {
+        return res.status(400).json({ error: "CBU/CVU invalido (22 digitos)" });
+      }
+    }
 
     // Duplicados
     const dupe = await pool.query(
@@ -133,15 +209,45 @@ router.post(
       `UPDATE users SET avatar_url=$1 WHERE id=$2`,
       [avatar.url, userId]
     );
+    await client.query(
+      `INSERT INTO user_addresses (
+         user_id,
+         phone,
+         country,
+         province,
+         city,
+         street,
+         street_number,
+         floor_apartment,
+         postal_code,
+         notes,
+         is_default
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE)`,
+      [
+        userId,
+        address.phone,
+        address.country,
+        address.province,
+        address.city,
+        address.street,
+        address.street_number,
+        address.floor_apartment || null,
+        address.postal_code,
+        address.notes || null
+      ]
+    );
     if (role === "designer") {
       const displayName = uname || `${fn} ${ln}`.trim() || emailNorm;
       await client.query(
-        `INSERT INTO designers (user_id, display_name, avatar_url)
-         VALUES ($1,$2,$3)
+        `INSERT INTO designers (user_id, display_name, avatar_url, payout_alias, payout_cbu)
+         VALUES ($1,$2,$3,$4,$5)
          ON CONFLICT (user_id)
          DO UPDATE SET avatar_url = EXCLUDED.avatar_url,
+                       payout_alias = EXCLUDED.payout_alias,
+                       payout_cbu = EXCLUDED.payout_cbu,
                        display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), designers.display_name)`,
-        [userId, displayName || "Diseñador", avatar.url]
+        [userId, displayName || "Diseñador", avatar.url, payoutAlias || null, payoutCbu || null]
       );
     }
 
@@ -199,7 +305,7 @@ router.post("/login", async (req, res) => {
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT id, email, username, name, role, avatar_url FROM users WHERE id=$1 LIMIT 1`,
+      `SELECT id, email, username, name, role, use_preference, avatar_url FROM users WHERE id=$1 LIMIT 1`,
       [req.user.id]
     );
     if (!r.rowCount) return res.status(404).json({ error: "Usuario no encontrado" });

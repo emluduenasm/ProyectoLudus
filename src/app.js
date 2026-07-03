@@ -14,6 +14,7 @@ import adminUsersRoutes from "./routes/adminUsersRoutes.js";
 import adminProductsRoutes from "./routes/adminProductsRoutes.js";
 import ordersRoutes from "./routes/ordersRoutes.js";
 import adminOrdersRoutes from "./routes/adminOrdersRoutes.js";
+import cartRoutes from "./routes/cartRoutes.js";
 import "./db.js"; // inicializa conexión y crea tablas si no existen
 
 
@@ -40,6 +41,7 @@ app.use("/api/admin/users", adminUsersRoutes);
 app.use("/api/admin/products", adminProductsRoutes);
 app.use("/api/admin/orders", adminOrdersRoutes);
 app.use("/api/orders", ordersRoutes);
+app.use("/api/cart", cartRoutes);
 
 // limitador solo para /api/auth/*
 app.use(

@@ -9,12 +9,15 @@
   const previewGrid = $("#previewGrid");
   const msg = $("#msg");
   const btn = $("#btnSave");
+  const qualityAlerts = $("#qualityAlerts");
   const titleInput = form?.elements?.title || $("#formUpload input[name='title']");
   const descInput = form?.elements?.description || $("#formUpload textarea[name='description']");
+  const tagsInput = form?.elements?.tags || $("#formUpload input[name='tags']");
 
   const token = localStorage.getItem("token") || "";
   const authHeaders = () => (token ? { Authorization: `Bearer ${token}` } : {});
   let previewSeq = 0;
+  const qualityState = { local: [], server: [] };
 
   // ---------- Utils de UI ----------
   function showMsg(text, type = "muted") {
@@ -98,11 +101,84 @@
     input?.classList.remove("is-valid");
   };
 
+  function normalizeTags(value = "") {
+    const seen = new Set();
+    return String(value)
+      .split(",")
+      .map((tag) => tag.trim().replace(/\s+/g, " "))
+      .filter(Boolean)
+      .map((tag) => tag.slice(0, 32))
+      .filter((tag) => {
+        const key = tag.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 10);
+  }
+
+  function dedupeAlerts(alerts = []) {
+    const seen = new Set();
+    return alerts.filter((alert) => {
+      const key = alert?.code || alert?.message;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function renderQualityAlerts() {
+    if (!qualityAlerts) return;
+    const alerts = dedupeAlerts([...qualityState.local, ...qualityState.server]);
+    if (!alerts.length) {
+      qualityAlerts.style.display = "none";
+      qualityAlerts.classList.remove("warning");
+      qualityAlerts.innerHTML = "";
+      return;
+    }
+    const hasWarning = alerts.some((alert) => alert.severity === "warning");
+    qualityAlerts.classList.toggle("warning", hasWarning);
+    qualityAlerts.style.display = "block";
+    qualityAlerts.innerHTML = `
+      <h3>
+        <i class="fa-solid ${hasWarning ? "fa-triangle-exclamation" : "fa-circle-info"}"></i>
+        ${hasWarning ? "Alertas de calidad" : "Revision de calidad"}
+      </h3>
+      <ul>${alerts.map((alert) => `<li>${alert.message || alert}</li>`).join("")}</ul>
+    `;
+  }
+
+  function setQualityAlerts(type, alerts = []) {
+    qualityState[type] = Array.isArray(alerts) ? alerts : [];
+    renderQualityAlerts();
+  }
+
+  function buildClientQualityAlerts({ width, height }) {
+    const alerts = [];
+    if (!width || !height) return alerts;
+    if (Math.min(width, height) < 1200) {
+      alerts.push({
+        code: "client_low_pixel_size",
+        severity: "warning",
+        message: `La imagen mide ${width}x${height}px. Para mejores impresiones recomendamos al menos 1200px en el lado mas corto.`
+      });
+    } else if (Math.min(width, height) < 2000) {
+      alerts.push({
+        code: "client_medium_pixel_size",
+        severity: "info",
+        message: `La imagen mide ${width}x${height}px. Es usable, pero 2000px o mas ayuda a mejorar la definicion.`
+      });
+    }
+    return alerts;
+  }
+
   function resetPreview() {
     if (preview) {
       preview.removeAttribute("src");
       preview.style.display = "none";
     }
+    setQualityAlerts("local", []);
+    setQualityAlerts("server", []);
     clearMockupCards();
     hideMockupLoading();
   }
@@ -160,11 +236,14 @@
       } else if (data?.mockup) {
         renderMockupCards([{ product_name: "Mockup", image: data.mockup }]);
       }
+      setQualityAlerts("local", []);
+      setQualityAlerts("server", data?.quality_alerts || data?.quality?.alerts || []);
       hideMockupLoading(seq);
     } catch (err) {
       if (seq === previewSeq) {
         clearMockupCards();
         showMsg("No se pudo generar la vista previa del mockup. Podés continuar con la carga.", "muted");
+        setQualityAlerts("server", []);
         hideMockupLoading(seq);
       }
     }
@@ -201,6 +280,8 @@
 
   file?.addEventListener("change", () => {
     showMsg("", "muted");
+    setQualityAlerts("local", []);
+    setQualityAlerts("server", []);
 
     const f = validateFile();
     if (!f) return;
@@ -211,6 +292,15 @@
       preview.src = e.target.result;
       preview.alt = "Vista previa";
       preview.style.display = "block";
+      const img = new Image();
+      img.onload = () => {
+        if (seq !== previewSeq) return;
+        setQualityAlerts("local", buildClientQualityAlerts({
+          width: img.naturalWidth,
+          height: img.naturalHeight
+        }));
+      };
+      img.src = e.target.result;
       // console.log("Vista previa cargada correctamente");
     };
     reader.onerror = () => {
@@ -256,6 +346,22 @@
       if (value.length < 10) return fieldError(descInput, "Describí tu diseño en al menos 10 caracteres.");
       return fieldOK(descInput);
     },
+    tags: () => {
+      const raw = tagsInput?.value.trim() || "";
+      if (!raw) {
+        fieldNeutral(tagsInput);
+        return true;
+      }
+      const tags = normalizeTags(raw);
+      const rawCount = raw.split(",").map((tag) => tag.trim()).filter(Boolean).length;
+      const hasLongTag = raw
+        .split(",")
+        .map((tag) => tag.trim())
+        .some((tag) => tag.length > 32);
+      if (hasLongTag) return fieldError(tagsInput, "Cada tag puede tener hasta 32 caracteres.");
+      if (rawCount > 10) return fieldError(tagsInput, "UsÃ¡ hasta 10 tags.");
+      return fieldOK(tagsInput, `${tags.length} tag${tags.length === 1 ? "" : "s"}.`);
+    },
     category: () => {
       if (!sel?.value) return fieldError(sel, "Elegí una categoría.");
       return fieldOK(sel);
@@ -265,6 +371,7 @@
 
   titleInput?.addEventListener("input", validators.title);
   descInput?.addEventListener("input", validators.description);
+  tagsInput?.addEventListener("input", validators.tags);
   sel?.addEventListener("change", validators.category);
 
   // ---------- Envío ----------
@@ -275,6 +382,7 @@
     const valResults = [
       validators.title?.(),
       validators.description?.(),
+      validators.tags?.(),
       validators.category?.(),
       validators.image?.(),
     ];
@@ -284,6 +392,7 @@
     }
 
     const fd = new FormData(form);
+    fd.set("tags", normalizeTags(tagsInput?.value || "").join(", "));
 
     btn.disabled = true;
     const oldTxt = btn.textContent;
@@ -304,9 +413,10 @@
       const data = await safeJSON(res);
       const notice = data?.message || "Tu diseño fue enviado y quedará en revisión.";
       showMsg(notice, "ok");
+      window.dispatchEvent(new CustomEvent("ludus:user-panel-nav-refresh"));
       form.reset();
       resetPreview();
-      [titleInput, descInput, sel, file].forEach((input) => input && fieldNeutral(input));
+      [titleInput, descInput, tagsInput, sel, file].forEach((input) => input && fieldNeutral(input));
       if (sel) sel.selectedIndex = 0;
     } catch (err) {
       showMsg(err?.message || "No se pudo guardar el diseño.", "error");

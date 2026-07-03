@@ -12,8 +12,29 @@ export async function ensureOrderSchema() {
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       total_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
+      shipping_phone TEXT,
+      shipping_country TEXT,
+      shipping_province TEXT,
+      shipping_city TEXT,
+      shipping_street TEXT,
+      shipping_street_number TEXT,
+      shipping_floor_apartment TEXT,
+      shipping_postal_code TEXT,
+      shipping_notes TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
+  `);
+  await pool.query(`
+    ALTER TABLE orders
+      ADD COLUMN IF NOT EXISTS shipping_phone TEXT,
+      ADD COLUMN IF NOT EXISTS shipping_country TEXT,
+      ADD COLUMN IF NOT EXISTS shipping_province TEXT,
+      ADD COLUMN IF NOT EXISTS shipping_city TEXT,
+      ADD COLUMN IF NOT EXISTS shipping_street TEXT,
+      ADD COLUMN IF NOT EXISTS shipping_street_number TEXT,
+      ADD COLUMN IF NOT EXISTS shipping_floor_apartment TEXT,
+      ADD COLUMN IF NOT EXISTS shipping_postal_code TEXT,
+      ADD COLUMN IF NOT EXISTS shipping_notes TEXT
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS order_items (

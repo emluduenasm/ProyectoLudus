@@ -75,6 +75,28 @@ router.post("/", requireAuth, async (req, res) => {
           WHERE id = ANY($1::uuid[])`,
         [productIds]
       );
+      const addressQ = await client.query(
+        `SELECT phone,
+                country,
+                province,
+                city,
+                street,
+                street_number,
+                floor_apartment,
+                postal_code,
+                notes
+           FROM user_addresses
+          WHERE user_id = $1
+          ORDER BY is_default DESC, created_at DESC
+          LIMIT 1`,
+        [userId]
+      );
+      const shipping = addressQ.rows[0];
+      if (!shipping) {
+        return res
+          .status(400)
+          .json({ error: "Completa tus datos de envio antes de finalizar la compra." });
+      }
 
       const designMap = new Map(designsQ.rows.map((row) => [String(row.id), row]));
       const productMap = new Map(productsQ.rows.map((row) => [String(row.id), row]));
@@ -121,10 +143,37 @@ router.post("/", requireAuth, async (req, res) => {
 
       await client.query("BEGIN");
       const orderInsert = await client.query(
-        `INSERT INTO orders (order_number, user_id, total_amount, status)
-         VALUES ($1, $2, $3, 'pending')
+        `INSERT INTO orders (
+           order_number,
+           user_id,
+           total_amount,
+           status,
+           shipping_phone,
+           shipping_country,
+           shipping_province,
+           shipping_city,
+           shipping_street,
+           shipping_street_number,
+           shipping_floor_apartment,
+           shipping_postal_code,
+           shipping_notes
+         )
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING id, order_number, total_amount, status, created_at`,
-        [makeOrderNumber(), userId, totalAmount]
+        [
+          makeOrderNumber(),
+          userId,
+          totalAmount,
+          shipping.phone,
+          shipping.country,
+          shipping.province,
+          shipping.city,
+          shipping.street,
+          shipping.street_number,
+          shipping.floor_apartment,
+          shipping.postal_code,
+          shipping.notes
+        ]
       );
       const order = orderInsert.rows[0];
 

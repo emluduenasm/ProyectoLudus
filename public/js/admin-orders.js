@@ -137,10 +137,24 @@ async function handleViewDetail(ev) {
 
 function renderModal(order) {
   const total = currency.format(order.total_amount || 0);
+  const shippingParts = [
+    [order.shipping_street, order.shipping_street_number].filter(Boolean).join(" "),
+    order.shipping_floor_apartment,
+    order.shipping_city,
+    order.shipping_province,
+    order.shipping_postal_code ? `CP ${order.shipping_postal_code}` : "",
+    order.shipping_country
+  ].filter(Boolean);
   controls.modalTitle.textContent = `Pedido ${order.order_number}`;
   controls.modalMeta.textContent = `Cliente: ${order.user_name} · ${order.email} · ${formatDate(order.created_at)} · Estado: ${order.status}`;
   controls.modalItems.innerHTML = `
     <div class="muted-sm" style="margin-bottom:.5rem">Total: <strong>${total}</strong></div>
+    <div class="detail-item" style="margin-bottom:1rem">
+      <h4>Envio</h4>
+      <div>${escapeHtml(shippingParts.join(", ") || "Sin direccion registrada")}</div>
+      <div class="detail-meta">Telefono: ${escapeHtml(order.shipping_phone || "-")}</div>
+      ${order.shipping_notes ? `<div class="detail-meta">Referencias: ${escapeHtml(order.shipping_notes)}</div>` : ""}
+    </div>
     <ul class="detail-list">
       ${order.items
         .map(

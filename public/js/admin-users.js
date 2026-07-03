@@ -83,6 +83,19 @@ async function loadList() {
       data-email="${escAttr(u.email)}"
       data-username="${escAttr(u.username)}"
       data-role="${escAttr(u.role)}"
+      data-use-preference="${escAttr(u.use_preference)}"
+      data-banned-reason="${escAttr(u.banned_reason)}"
+      data-phone="${escAttr(u.phone)}"
+      data-country="${escAttr(u.country)}"
+      data-province="${escAttr(u.province)}"
+      data-city="${escAttr(u.city)}"
+      data-street="${escAttr(u.street)}"
+      data-street-number="${escAttr(u.street_number)}"
+      data-floor-apartment="${escAttr(u.floor_apartment)}"
+      data-postal-code="${escAttr(u.postal_code)}"
+      data-notes="${escAttr(u.address_notes)}"
+      data-payout-alias="${escAttr(u.payout_alias)}"
+      data-payout-cbu="${escAttr(u.payout_cbu)}"
     >
       <td>
         <div><strong>${u.full_name || "—"}</strong> ${u.banned ? '<span class="role-pill" style="background:#fee2e2;color:#991b1b;margin-left:.4rem">Baneado</span>' : ''}</div>
@@ -186,6 +199,7 @@ async function confirmDel(id, tr) {
 const dlg = $("#modal");
 const form = $("#formEdit");
 const msg = $("#msg");
+const banReasonWrap = $("#banReasonWrap");
 
 // si querés forzar solo números en el DNI del modal
 const dniInput = form?.querySelector?.('input[name="dni"]');
@@ -194,6 +208,21 @@ if (dniInput) {
     dniInput.value = dniInput.value.replace(/\D/g, "").slice(0, 10);
   });
 }
+const payoutCbuInput = form?.querySelector?.('input[name="payout_cbu"]');
+if (payoutCbuInput) {
+  payoutCbuInput.addEventListener("input", () => {
+    payoutCbuInput.value = payoutCbuInput.value.replace(/\D/g, "").slice(0, 22);
+  });
+}
+const phoneInput = form?.querySelector?.('input[name="phone"]');
+if (phoneInput) {
+  phoneInput.addEventListener("input", () => {
+    phoneInput.value = phoneInput.value.replace(/\D/g, "").slice(0, 10);
+  });
+}
+form?.banned?.addEventListener("change", () => {
+  if (banReasonWrap) banReasonWrap.hidden = form.banned.value !== "true";
+});
 
 function setForm(user) {
   form.id.value = user.id;
@@ -205,6 +234,21 @@ function setForm(user) {
   // existentes
   form.username.value = user.username || "";
   form.role.value = user.role || "buyer";
+  form.use_preference.value = user.use_preference || (user.role === "designer" ? "upload" : "buy");
+  form.banned.value = user.banned ? "true" : "false";
+  form.banned_reason.value = user.banned_reason || "";
+  if (banReasonWrap) banReasonWrap.hidden = form.banned.value !== "true";
+  form.phone.value = user.phone || "";
+  form.country.value = user.country || "Argentina";
+  form.province.value = user.province || "";
+  form.city.value = user.city || "";
+  form.street.value = user.street || "";
+  form.street_number.value = user.street_number || "";
+  form.floor_apartment.value = user.floor_apartment || "";
+  form.postal_code.value = user.postal_code || "";
+  form.notes.value = user.notes || "";
+  form.payout_alias.value = user.payout_alias || "";
+  form.payout_cbu.value = user.payout_cbu || "";
 }
 
 async function openEdit(id, tr) {
@@ -216,6 +260,20 @@ async function openEdit(id, tr) {
     email:      tr.dataset.email || "",
     username:   tr.dataset.username || tr.children[1].textContent.trim(),
     role:       tr.dataset.role || tr.children[4].innerText.trim(),
+    use_preference: tr.dataset.usePreference || "",
+    banned: tr.dataset.banned === "1",
+    banned_reason: tr.dataset.bannedReason || "",
+    phone: tr.dataset.phone || "",
+    country: tr.dataset.country || "",
+    province: tr.dataset.province || "",
+    city: tr.dataset.city || "",
+    street: tr.dataset.street || "",
+    street_number: tr.dataset.streetNumber || "",
+    floor_apartment: tr.dataset.floorApartment || "",
+    postal_code: tr.dataset.postalCode || "",
+    notes: tr.dataset.notes || "",
+    payout_alias: tr.dataset.payoutAlias || "",
+    payout_cbu: tr.dataset.payoutCbu || "",
   });
   msg.textContent = "";
   dlg.showModal();
@@ -234,7 +292,25 @@ form.addEventListener("submit", async (e) => {
     // existentes
     username: form.username.value.trim(),
     role: form.role.value,
+    use_preference: form.use_preference.value,
+    banned: form.banned.value === "true",
+    banned_reason: form.banned_reason.value.trim(),
+    phone: form.phone.value.replace(/\D/g, ""),
+    country: form.country.value.trim(),
+    province: form.province.value.trim(),
+    city: form.city.value.trim(),
+    street: form.street.value.trim(),
+    street_number: form.street_number.value.trim(),
+    floor_apartment: form.floor_apartment.value.trim(),
+    postal_code: form.postal_code.value.trim().toUpperCase().replace(/\s+/g, ""),
+    notes: form.notes.value.trim(),
+    payout_alias: form.payout_alias.value.trim(),
+    payout_cbu: form.payout_cbu.value.replace(/\D/g, ""),
   };
+  if (payload.role !== "designer" && !payload.payout_alias && !payload.payout_cbu) {
+    delete payload.payout_alias;
+    delete payload.payout_cbu;
+  }
   try {
     await patchUser(id, payload);
     dlg.close();

@@ -18,6 +18,10 @@
 
   const featuredWrap  = getFeaturedWrap();
   const designersWrap = getDesignersWrap();
+  const tagsMarkup = (tags = []) =>
+    Array.isArray(tags) && tags.length
+      ? `<div class="tag-list">${tags.map((tag) => `<span class="tag-chip">${tag}</span>`).join("")}</div>`
+      : "";
 
   const designCard = (d) => `
     <a class="card design-card" href="/design.html?id=${d.id}">
@@ -31,12 +35,15 @@
           <span title="Me gusta"><i class="fa-solid fa-heart"></i> ${d.likes ?? 0}</span>
         </div>
         ${d.category_name ? `<span class="badge">${d.category_name}</span>` : ""}
+        ${tagsMarkup(d.tags)}
       </div>
     </a>
   `;
 
-  const designerCard = (u) => `
-    <a class="card" href="/designer.html?alias=${encodeURIComponent(u.username || u.id)}">
+  const designerCard = (u) => {
+    const name = u.display_name || u.name || u.username || "Diseñador";
+    return `
+    <a class="card" href="/designer.html?alias=${encodeURIComponent(u.alias || u.username || u.id)}">
       <div class="thumb">
         <img src="${u.avatar_url || '/img/uploads/avatars/default.png'}" alt="${u.username || 'diseñador'}" loading="lazy"/>
       </div>
@@ -49,6 +56,7 @@
       </div>
     </a>
   `;
+  };
 
   async function loadFeaturedDesigns() {
     if (!featuredWrap) return;
@@ -73,7 +81,15 @@
       if (!res.ok) throw 0;
       const items = await res.json();
       designersWrap.innerHTML = items.length
-        ? items.map(designerCard).join("")
+        ? items
+            .map((item) =>
+              designerCard({
+                ...item,
+                alias: item.username || item.id,
+                username: item.display_name || item.username
+              })
+            )
+            .join("")
         : `<div class="muted span-all">Sin diseñadores destacados por ahora.</div>`;
     } catch {
       designersWrap.innerHTML = "";

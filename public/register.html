@@ -82,9 +82,91 @@
             <select id="use_preference" name="use_preference" required>
               <option value="buy">Comprar</option>
               <option value="upload">Subir diseños</option>
-              <option value="both">Ambos</option>
             </select>
             <p class="muted" style="margin-top:.4rem">Elegí la opción que se acerque más a tu objetivo inicial. Sin importar tu elección, vas a poder subir tus propios diseños y también comprar productos.</p>
+          </div>
+
+          <div class="form-col-2" id="shippingFields">
+            <h2 class="terms-title" style="margin-top:.25rem"><i class="fa-solid fa-location-dot"></i> Direccion de contacto y facturacion</h2>
+            <p class="muted" style="margin-top:.4rem">Tambien se usara como direccion de envio cuando realices una compra.</p>
+          </div>
+          <div class="form-col-1 shipping-field">
+            <label for="phone">Telefono / WhatsApp</label>
+            <input id="phone" name="phone" type="tel" inputmode="numeric" maxlength="14" autocomplete="tel" required />
+            <div class="hint">10 digitos, con codigo de area, sin 0 ni 15.</div>
+          </div>
+          <div class="form-col-1 shipping-field">
+            <label for="country">Pais</label>
+            <input id="country" name="country" type="text" autocomplete="country-name" value="Argentina" readonly required />
+          </div>
+          <div class="form-col-1 shipping-field">
+            <label for="province">Provincia</label>
+            <select id="province" name="province" autocomplete="address-level1" required>
+              <option value="">Selecciona una provincia</option>
+              <option>Buenos Aires</option>
+              <option>Catamarca</option>
+              <option>Chaco</option>
+              <option>Chubut</option>
+              <option>Ciudad Autonoma de Buenos Aires</option>
+              <option>Cordoba</option>
+              <option>Corrientes</option>
+              <option>Entre Rios</option>
+              <option>Formosa</option>
+              <option>Jujuy</option>
+              <option>La Pampa</option>
+              <option>La Rioja</option>
+              <option>Mendoza</option>
+              <option>Misiones</option>
+              <option>Neuquen</option>
+              <option>Rio Negro</option>
+              <option>Salta</option>
+              <option>San Juan</option>
+              <option>San Luis</option>
+              <option>Santa Cruz</option>
+              <option>Santa Fe</option>
+              <option>Santiago del Estero</option>
+              <option>Tierra del Fuego</option>
+              <option>Tucuman</option>
+            </select>
+          </div>
+          <div class="form-col-1 shipping-field">
+            <label for="city">Localidad / Ciudad</label>
+            <input id="city" name="city" type="text" autocomplete="address-level2" required />
+          </div>
+          <div class="form-col-1 shipping-field">
+            <label for="street">Calle</label>
+            <input id="street" name="street" type="text" autocomplete="address-line1" required />
+          </div>
+          <div class="form-col-1 shipping-field">
+            <label for="street_number">Altura / Numero</label>
+            <input id="street_number" name="street_number" type="text" autocomplete="address-line2" required />
+          </div>
+          <div class="form-col-1 shipping-field">
+            <label for="floor_apartment">Piso / Depto / Casa</label>
+            <input id="floor_apartment" name="floor_apartment" type="text" autocomplete="address-line3" />
+          </div>
+          <div class="form-col-1 shipping-field">
+            <label for="postal_code">Codigo postal</label>
+            <input id="postal_code" name="postal_code" type="text" maxlength="8" autocomplete="postal-code" required />
+            <div class="hint">CPA: 4 numeros o formato A1234ABC.</div>
+          </div>
+          <div class="form-col-2 shipping-field">
+            <label for="shipping_notes">Referencias para la entrega</label>
+            <textarea id="shipping_notes" name="shipping_notes" rows="3" maxlength="240"></textarea>
+          </div>
+
+          <div class="form-col-2" id="payoutFields" hidden>
+            <h2 class="terms-title" style="margin-top:.25rem"><i class="fa-solid fa-money-bill-transfer"></i> Datos de cobro</h2>
+            <p class="muted" style="margin-top:.4rem">Necesarios para pagar tus comisiones cuando vendas disenos.</p>
+          </div>
+          <div class="form-col-1 payout-field" hidden>
+            <label for="payout_alias">Alias bancario / billetera</label>
+            <input id="payout_alias" name="payout_alias" type="text" autocomplete="off" />
+          </div>
+          <div class="form-col-1 payout-field" hidden>
+            <label for="payout_cbu">CBU / CVU</label>
+            <input id="payout_cbu" name="payout_cbu" type="text" inputmode="numeric" maxlength="22" autocomplete="off" />
+            <div class="hint">22 digitos. Podes cargar alias o CBU/CVU.</div>
           </div>
 
           <div class="form-col-2 avatar-upload-field">

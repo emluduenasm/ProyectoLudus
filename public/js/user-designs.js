@@ -2,7 +2,7 @@
 (() => {
   const api = (p) => (p.startsWith("/api") ? p : `/api${p}`);
   const $ = (s, r = document) => r.querySelector(s);
-  const esc = (s) => String(s ?? "").replace(/[&<>"]'/g, (ch) => (
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch
   ));
 
@@ -50,7 +50,7 @@
       return;
     }
     if (!ALLOWED.includes(file.type) || file.size > MAX_BYTES) {
-      showMsg("Imagen inválida (JPG, PNG o WEBP, máx. 8 MB).", "error");
+      showMsg("Imagen invalida (JPG, PNG o WEBP, max. 8 MB).", "error");
       imageInput.value = "";
       setPreview(el.form?.dataset?.image || "");
       return;
@@ -101,7 +101,7 @@
   function fillCategorySelect(selectedId) {
     if (!el.selCategory) return;
     if (!state.categories.length) {
-      el.selCategory.innerHTML = `<option value="">Sin categorías disponibles</option>`;
+      el.selCategory.innerHTML = `<option value="">Sin categorias disponibles</option>`;
       return;
     }
     el.selCategory.innerHTML = state.categories
@@ -113,23 +113,63 @@
   }
 
   function categoryName(id) {
-    const name = state.categories.find((c) => String(c.id) === String(id))?.name || "—";
-    return esc(name);
+    return esc(state.categories.find((c) => String(c.id) === String(id))?.name || "-");
+  }
+
+  function normalizeTags(value = "") {
+    const seen = new Set();
+    return String(value)
+      .split(",")
+      .map((tag) => tag.trim().replace(/\s+/g, " "))
+      .filter(Boolean)
+      .map((tag) => tag.slice(0, 32))
+      .filter((tag) => {
+        const key = tag.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 10);
+  }
+
+  function formatTags(tags = []) {
+    const list = Array.isArray(tags) ? tags : normalizeTags(tags);
+    if (!list.length) return "";
+    return `<div class="tag-list">${list.map((tag) => `<span class="tag-chip">${esc(tag)}</span>`).join("")}</div>`;
+  }
+
+  function displayStatus(design) {
+    const reviewStatus = design.review_status || (design.published ? "approved" : "pending");
+    if (reviewStatus === "approved" && !design.published) return "approved_hidden";
+    return reviewStatus;
   }
 
   function statusPill(status) {
     if (status === "approved") {
       return `<span class="status-pill published"><i class="fa-solid fa-circle-check"></i> Publicado</span>`;
     }
+    if (status === "approved_hidden") {
+      return `<span class="status-pill approved-hidden"><i class="fa-solid fa-eye-slash"></i> Aprobado · oculto</span>`;
+    }
     if (status === "rejected") {
       return `<span class="status-pill rejected"><i class="fa-solid fa-circle-xmark"></i> Rechazado</span>`;
     }
-    return `<span class="status-pill pending"><i class="fa-solid fa-hourglass-half"></i> En revisión</span>`;
+    return `<span class="status-pill pending"><i class="fa-solid fa-hourglass-half"></i> En revision</span>`;
+  }
+
+  function visibilityButton(design, status) {
+    if (status === "approved" && design.published) {
+      return `<button class="btn btn-outline" data-action="unpublish"><i class="fa-solid fa-eye-slash"></i> Despublicar</button>`;
+    }
+    if (status === "approved_hidden") {
+      return `<button class="btn btn-primary" data-action="publish"><i class="fa-solid fa-eye"></i> Publicar</button>`;
+    }
+    return "";
   }
 
   async function loadDesigns() {
     if (!el.rows) return;
-    el.rows.innerHTML = `<tr><td colspan="5">Cargando…</td></tr>`;
+    el.rows.innerHTML = `<tr><td colspan="5">Cargando...</td></tr>`;
     try {
       const res = await fetch(api("/designs/mine"), {
         headers: { ...authHeaders(), Accept: "application/json" },
@@ -149,15 +189,18 @@
       }
 
       if (!state.items.length) {
-        el.rows.innerHTML = `<tr><td colspan="5">Todavía no subiste diseños. Podés empezar desde <a class="link" href="/upload.html">Subir diseño</a>.</td></tr>`;
+        el.rows.innerHTML = `<tr><td colspan="5">Todavia no subiste diseños. Podes empezar desde <a class="link" href="/upload.html">Subir diseño</a>.</td></tr>`;
         return;
       }
 
       el.rows.innerHTML = state.items
         .map((d) => {
-          const status = d.review_status || (d.published ? "approved" : "pending");
+          const status = displayStatus(d);
           const rejectedNote = status === "rejected"
-            ? `<div class=\"muted-sm\" style=\"margin-top:.35rem;color:#b91c1c\">Rechazado por el equipo. Editá y guardá para reenviarlo a revisión.</div>`
+            ? `<div class="muted-sm" style="margin-top:.35rem;color:#b91c1c">Rechazado por el equipo. Edita y guarda para reenviarlo a revision.</div>`
+            : "";
+          const hiddenNote = status === "approved_hidden"
+            ? `<div class="muted-sm" style="margin-top:.35rem;color:#1e40af">Aprobado por el equipo, pero no visible en la galeria.</div>`
             : "";
           return `
           <tr data-id="${esc(d.id)}">
@@ -173,13 +216,16 @@
                 </a>
               </div>
               <div class="muted-sm">${new Date(d.created_at).toLocaleDateString("es-AR")} · ${categoryName(d.category_id)}</div>
+              ${formatTags(d.tags)}
               ${d.description ? `<div class="muted-sm" style="margin-top:.25rem">${esc(d.description)}</div>` : ""}
               ${rejectedNote}
+              ${hiddenNote}
             </td>
             <td>${esc(d.likes ?? 0)}</td>
             <td>${statusPill(status)}</td>
             <td class="right">
               <div class="actions">
+                ${visibilityButton(d, status)}
                 <button class="btn" data-action="edit"><i class="fa-solid fa-pen"></i> Editar</button>
                 <button class="btn btn-danger" data-action="delete"><i class="fa-solid fa-trash"></i> Eliminar</button>
               </div>
@@ -204,6 +250,8 @@
         const action = btn.dataset.action;
         if (action === "edit") openEdit(id);
         if (action === "delete") confirmDelete(id);
+        if (action === "publish") togglePublished(id, true, btn);
+        if (action === "unpublish") togglePublished(id, false, btn);
       });
     });
   }
@@ -218,19 +266,23 @@
     el.form.id.value = design.id;
     el.form.title.value = design.title || "";
     el.form.description.value = design.description || "";
+    el.form.tags.value = Array.isArray(design.tags) ? design.tags.join(", ") : "";
     fillCategorySelect(design.category_id);
     el.form.dataset.originalTitle = (design.title || "").trim();
     el.form.dataset.originalDescription = (design.description || "").trim();
+    el.form.dataset.originalTags = Array.isArray(design.tags) ? design.tags.join(", ") : "";
     el.form.dataset.originalCategory = String(design.category_id || "");
     el.form.dataset.image = design.thumbnail_url || design.image_url || "";
     el.form.dataset.status = design.review_status || (design.published ? "approved" : "pending");
 
     if (el.statusNote) {
-      const status = el.form.dataset.status;
+      const status = displayStatus(design);
       if (status === "rejected") {
-        el.statusNote.textContent = "Este diseño fue rechazado. Guardá cambios para reenviarlo a revisión.";
+        el.statusNote.textContent = "Este diseño fue rechazado. Guarda cambios para reenviarlo a revision.";
       } else if (status === "approved") {
-        el.statusNote.textContent = "Este diseño está publicado. Al guardar cambios volverá a quedar en revisión.";
+        el.statusNote.textContent = "Este diseño esta publicado. Al guardar cambios volvera a quedar en revision.";
+      } else if (status === "approved_hidden") {
+        el.statusNote.textContent = "Este diseño esta aprobado y oculto. Si solo lo publicas, no vuelve a moderacion.";
       } else {
         el.statusNote.textContent = "";
       }
@@ -249,19 +301,22 @@
     const payload = {
       title: el.form.title.value.trim(),
       description: el.form.description.value.trim(),
+      tags: normalizeTags(el.form.tags.value).join(", "),
       category_id: el.form.category_id.value,
     };
     if (!payload.title) {
-      showMsg("El título es obligatorio.", "error");
+      showMsg("El titulo es obligatorio.", "error");
       return;
     }
 
     const originalTitle = el.form.dataset.originalTitle || "";
     const originalDescription = el.form.dataset.originalDescription || "";
+    const originalTags = el.form.dataset.originalTags || "";
     const originalCategory = el.form.dataset.originalCategory || "";
     const hasTextChanges =
       payload.title !== originalTitle ||
       payload.description !== originalDescription ||
+      payload.tags !== originalTags ||
       String(payload.category_id) !== String(originalCategory);
 
     const file = imageInput?.files?.[0] || null;
@@ -303,7 +358,7 @@
 
   async function uploadImage(designId, file) {
     if (!ALLOWED.includes(file.type) || file.size > MAX_BYTES) {
-      throw new Error("Imagen inválida (JPG, PNG o WEBP, máx. 8 MB)");
+      throw new Error("Imagen invalida (JPG, PNG o WEBP, max. 8 MB)");
     }
     const fd = new FormData();
     fd.append("image", file);
@@ -317,8 +372,31 @@
     return data;
   }
 
+  async function togglePublished(id, published, btn) {
+    const design = findDesign(id);
+    if (!design) return;
+    const message = published
+      ? "¿Publicar este diseño aprobado en la galeria?"
+      : "¿Despublicar este diseño? Podras volver a publicarlo sin moderacion si no lo modificas.";
+    if (!confirm(message)) return;
+    try {
+      btn.disabled = true;
+      const res = await fetch(api(`/designs/${id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ published }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "No se pudo cambiar la publicacion");
+      await loadDesigns();
+    } catch (err) {
+      alert(err.message || "No se pudo cambiar la publicacion.");
+      btn.disabled = false;
+    }
+  }
+
   async function confirmDelete(id) {
-    if (!confirm("¿Eliminar este diseño? Esta acción no se puede deshacer.")) return;
+    if (!confirm("¿Eliminar este diseño? Esta accion no se puede deshacer.")) return;
     try {
       const res = await fetch(api(`/designs/${id}`), {
         method: "DELETE",

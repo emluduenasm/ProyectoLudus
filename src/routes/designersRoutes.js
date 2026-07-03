@@ -33,6 +33,38 @@ async function removeFileIfExists(filePath) {
 }
 
 const normalizeAvatar = (url) => (url && url.trim() ? url : DEFAULT_AVATAR);
+const cleanText = (value, max = 160) => String(value ?? "").trim().slice(0, max);
+const cleanDigits = (value, max = 40) => String(value ?? "").replace(/\D/g, "").slice(0, max);
+const ARG_PROVINCES = new Set([
+  "Buenos Aires",
+  "Catamarca",
+  "Chaco",
+  "Chubut",
+  "Ciudad Autonoma de Buenos Aires",
+  "Cordoba",
+  "Corrientes",
+  "Entre Rios",
+  "Formosa",
+  "Jujuy",
+  "La Pampa",
+  "La Rioja",
+  "Mendoza",
+  "Misiones",
+  "Neuquen",
+  "Rio Negro",
+  "Salta",
+  "San Juan",
+  "San Luis",
+  "Santa Cruz",
+  "Santa Fe",
+  "Santiago del Estero",
+  "Tierra del Fuego",
+  "Tucuman"
+]);
+const normalizePostalCodeAR = (value) => cleanText(value, 12).toUpperCase().replace(/\s+/g, "");
+const validPostalCodeAR = (value) => /^\d{4}$/.test(value) || /^[A-Z]\d{4}[A-Z]{3}$/.test(value);
+const validPayoutAlias = (value) => /^[A-Za-z0-9._-]{6,30}$/.test(value);
+const validPayoutCbu = (value) => /^\d{22}$/.test(value);
 const clampInt = (value, min, max, fallback) => {
   const num = Number.parseInt(value, 10);
   if (!Number.isFinite(num)) return fallback;
@@ -73,10 +105,28 @@ async function buildProfile(userId) {
             p.dni,
             d.id AS designer_id,
             d.display_name,
-            d.avatar_url AS designer_avatar_url
+            d.avatar_url AS designer_avatar_url,
+            d.payout_alias,
+            d.payout_cbu,
+            a.phone,
+            a.country,
+            a.province,
+            a.city,
+            a.street,
+            a.street_number,
+            a.floor_apartment,
+            a.postal_code,
+            a.notes AS address_notes
      FROM users u
      LEFT JOIN personas p ON p.id = u.persona_id
      LEFT JOIN designers d ON d.user_id = u.id
+     LEFT JOIN LATERAL (
+       SELECT phone, country, province, city, street, street_number, floor_apartment, postal_code, notes
+       FROM user_addresses ua
+       WHERE ua.user_id = u.id
+       ORDER BY ua.is_default DESC, ua.created_at DESC
+       LIMIT 1
+     ) a ON TRUE
      WHERE u.id = $1
      LIMIT 1`,
     [userId]
@@ -99,10 +149,23 @@ async function buildProfile(userId) {
       last_name: row.last_name || "",
       dni: row.dni || ""
     },
+    address: {
+      phone: row.phone || "",
+      country: row.country || "Argentina",
+      province: row.province || "",
+      city: row.city || "",
+      street: row.street || "",
+      street_number: row.street_number || "",
+      floor_apartment: row.floor_apartment || "",
+      postal_code: row.postal_code || "",
+      notes: row.address_notes || ""
+    },
     designer: {
       id: row.designer_id,
       display_name: row.display_name || row.username || row.email,
       avatar_url: normalizeAvatar(row.user_avatar_url || row.designer_avatar_url),
+      payout_alias: row.payout_alias || "",
+      payout_cbu: row.payout_cbu || "",
       stats
     }
   };
@@ -205,7 +268,7 @@ router.get("/", async (req, res) => {
                MAX(d.created_at) AS last_design_at
         FROM designs d
         LEFT JOIN design_likes l ON l.design_id = d.id
-        WHERE (d.published = TRUE OR COALESCE(d.review_status, 'pending') = 'approved')
+        WHERE d.published = TRUE
           ${categoryClause}
         GROUP BY d.designer_id
       ) s ON s.designer_id = g.id
@@ -310,6 +373,7 @@ router.get("/featured", async (req, res) => {
                 COUNT(l.user_id)::int      AS likes
          FROM designs d
          LEFT JOIN design_likes l ON l.design_id = d.id
+         WHERE d.published = TRUE
          GROUP BY d.designer_id
        )
        SELECT g.id,
@@ -321,7 +385,7 @@ router.get("/featured", async (req, res) => {
        FROM designers g
        JOIN users u ON u.id = g.user_id
        LEFT JOIN agg ON agg.designer_id = g.id
-       WHERE COALESCE(agg.likes, 0) > 0
+       WHERE COALESCE(agg.designs_count, 0) > 0
        ORDER BY COALESCE(agg.likes, 0) DESC,
                 COALESCE(agg.designs_count, 0) DESC,
                 display_name ASC
@@ -338,7 +402,6 @@ router.get("/featured", async (req, res) => {
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    await ensureDesigner(userId);
     const profile = await buildProfile(userId);
     if (!profile) return res.status(404).json({ error: "Perfil no encontrado" });
     res.json(profile);
@@ -354,6 +417,17 @@ router.get("/profile/:username", async (req, res) => {
     if (!username) {
       return res.status(400).json({ error: "Alias requerido" });
     }
+    const searchRaw =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const categoryRaw =
+      typeof req.query.category === "string" ? req.query.category.trim() : "";
+    const orderRaw =
+      typeof req.query.order === "string"
+        ? req.query.order.trim().toLowerCase()
+        : "popular";
+    const minLikesRaw =
+      req.query.min_likes ?? req.query.minLikes ?? req.query.likes;
+    const minLikes = Math.max(0, Number.parseInt(minLikesRaw || "0", 10) || 0);
 
     const infoQ = await pool.query(
       `WITH stats AS (
@@ -362,6 +436,7 @@ router.get("/profile/:username", async (req, res) => {
                 COUNT(l.user_id)::int AS likes
          FROM designs d
          LEFT JOIN design_likes l ON l.design_id = d.id
+         WHERE d.published = TRUE
          GROUP BY d.designer_id
        )
        SELECT g.id   AS designer_id,
@@ -382,33 +457,110 @@ router.get("/profile/:username", async (req, res) => {
     const info = infoQ.rows[0];
     if (!info) return res.status(404).json({ error: "Diseñador no encontrado" });
 
+    let categoryId = "";
+    if (categoryRaw) {
+      if (/^[0-9a-fA-F-]{32,36}$/.test(categoryRaw)) {
+        categoryId = categoryRaw;
+      } else {
+        const lookup = await pool.query(
+          `SELECT id
+             FROM categories
+            WHERE LOWER(slug) = LOWER($1) OR LOWER(name) = LOWER($1)
+            LIMIT 1`,
+          [categoryRaw]
+        );
+        categoryId = lookup.rows[0]?.id ?? "";
+      }
+    }
+
+    const filters = [
+      "d.designer_id = $1",
+      "d.published = TRUE"
+    ];
+    const queryParams = [info.designer_id];
+    const pushParam = (value) => {
+      queryParams.push(value);
+      return queryParams.length;
+    };
+
+    if (searchRaw) {
+      const idx = pushParam(`%${searchRaw.toLowerCase()}%`);
+      filters.push(
+        `(
+          LOWER(d.title) LIKE $${idx}
+          OR LOWER(COALESCE(d.description, '')) LIKE $${idx}
+          OR EXISTS (
+            SELECT 1
+              FROM unnest(COALESCE(d.tags, '{}'::text[])) AS tag
+             WHERE LOWER(tag) LIKE $${idx}
+          )
+        )`
+      );
+    }
+
+    if (categoryId) {
+      const idx = pushParam(categoryId);
+      filters.push(`d.category_id = $${idx}`);
+    }
+
+    let havingClause = "";
+    if (minLikes > 0) {
+      const idx = pushParam(minLikes);
+      havingClause = `HAVING COUNT(l.user_id)::int >= $${idx}`;
+    }
+
+    let orderClause;
+    switch (orderRaw) {
+      case "newest":
+      case "recent":
+        orderClause = "ORDER BY d.created_at DESC";
+        break;
+      case "oldest":
+        orderClause = "ORDER BY d.created_at ASC";
+        break;
+      case "alpha":
+      case "alphabetical":
+      case "title":
+        orderClause = "ORDER BY d.title ASC, d.created_at DESC";
+        break;
+      case "likes":
+      case "popular":
+      default:
+        orderClause = "ORDER BY likes DESC, d.created_at DESC";
+        break;
+    }
+
     const designsQ = await pool.query(
       `SELECT d.id,
               d.title,
               d.description,
+              COALESCE(d.tags, '{}'::text[]) AS tags,
               d.image_url,
               d.thumbnail_url,
               d.created_at,
               COALESCE(c.name, '') AS category_name,
+              c.id AS category_id,
               COUNT(l.user_id)::int AS likes
        FROM designs d
        LEFT JOIN design_likes l ON l.design_id = d.id
        LEFT JOIN categories c ON c.id = d.category_id
-       WHERE d.designer_id = $1
-         AND (d.published = TRUE OR COALESCE(d.review_status, 'pending') = 'approved')
-       GROUP BY d.id, c.name
-       ORDER BY likes DESC, d.created_at DESC`,
-      [info.designer_id]
+       WHERE ${filters.join(" AND ")}
+       GROUP BY d.id, c.id, c.name
+       ${havingClause}
+       ${orderClause}`,
+      queryParams
     );
 
     const designs = designsQ.rows.map((d) => ({
       id: d.id,
       title: d.title,
       description: d.description || "",
+      tags: d.tags || [],
       image_url: d.image_url,
       thumbnail_url: d.thumbnail_url || d.image_url,
       created_at: d.created_at,
       likes: d.likes,
+      category_id: d.category_id,
       category_name: d.category_name || ""
     }));
 
@@ -421,12 +573,19 @@ router.get("/profile/:username", async (req, res) => {
         stats: {
           designs_total: info.designs_count,
           likes_total: info.likes_count,
-          designs_published: designs.length,
-          likes_published: designs.reduce((acc, d) => acc + (d.likes || 0), 0)
+          designs_published: info.designs_count,
+          likes_published: info.likes_count
         },
         member_since: info.created_at
       },
-      designs
+      designs,
+      filters: {
+        search: searchRaw,
+        category: categoryRaw,
+        order: orderRaw,
+        min_likes: minLikes,
+        total: designs.length
+      }
     });
   } catch (e) {
     console.error("GET /designers/profile/:username", e);
@@ -441,8 +600,31 @@ router.patch("/me", requireAuth, async (req, res) => {
     last_name,
     dni,
     username,
-    display_name
+    display_name,
+    email,
+    use_preference,
+    phone,
+    country,
+    province,
+    city,
+    street,
+    street_number,
+    floor_apartment,
+    postal_code,
+    notes,
+    payout_alias,
+    payout_cbu
   } = req.body ?? {};
+
+  if (
+    typeof first_name !== "undefined" ||
+    typeof last_name !== "undefined" ||
+    typeof dni !== "undefined"
+  ) {
+    return res.status(403).json({
+      error: "Nombre, apellido y DNI solo pueden ser editados por un administrador."
+    });
+  }
 
   let aliasInput = null;
   if (typeof username === "string") {
@@ -457,6 +639,23 @@ router.patch("/me", requireAuth, async (req, res) => {
     typeof last_name === "string" ? last_name.trim() : null;
   const dniInput =
     typeof dni !== "undefined" ? String(dni).replace(/\D/g, "") : null;
+  const emailInput = typeof email === "string" ? cleanText(email, 120).toLowerCase() : null;
+  const usePreferenceInput =
+    typeof use_preference === "string" ? cleanText(use_preference, 12).toLowerCase() : null;
+  const addressFields = [
+    phone,
+    country,
+    province,
+    city,
+    street,
+    street_number,
+    floor_apartment,
+    postal_code,
+    notes
+  ];
+  const wantsAddressUpdate = addressFields.some((value) => typeof value !== "undefined");
+  const wantsPayoutUpdate =
+    typeof payout_alias !== "undefined" || typeof payout_cbu !== "undefined";
 
   if (aliasInput !== null) {
     if (!aliasInput) return res.status(400).json({ error: "El alias no puede estar vacío." });
@@ -471,6 +670,12 @@ router.patch("/me", requireAuth, async (req, res) => {
   if (dniInput !== null && !/^\d{8}$/.test(dniInput)) {
     return res.status(400).json({ error: "DNI inválido (8 dígitos)." });
   }
+  if (emailInput !== null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput)) {
+    return res.status(400).json({ error: "Email inválido." });
+  }
+  if (usePreferenceInput !== null && !["buy", "upload"].includes(usePreferenceInput)) {
+    return res.status(400).json({ error: "Preferencia de uso inválida." });
+  }
 
   const wantsPersonaUpdate =
     firstInput !== null || lastInput !== null || dniInput !== null;
@@ -484,10 +689,9 @@ router.patch("/me", requireAuth, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const designer = await ensureDesigner(userId, client);
 
     const userRowQ = await client.query(
-      `SELECT id, persona_id, username, name
+      `SELECT id, persona_id, username, email, name, role, use_preference, avatar_url
        FROM users
        WHERE id = $1
        FOR UPDATE`,
@@ -604,9 +808,173 @@ router.patch("/me", requireAuth, async (req, res) => {
         [aliasInput, userId]
       );
       await client.query(
-        `UPDATE designers SET display_name=$1 WHERE id=$2`,
-        [aliasInput, designer.id]
+        `UPDATE designers SET display_name=$1 WHERE user_id=$2`,
+        [aliasInput, userId]
       );
+    }
+
+    if (emailInput !== null && emailInput !== (userRow.email || "").toLowerCase()) {
+      const dupEmail = await client.query(
+        `SELECT 1 FROM users WHERE LOWER(email)=LOWER($1) AND id<>$2 LIMIT 1`,
+        [emailInput, userId]
+      );
+      if (dupEmail.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "El email ya está registrado." });
+      }
+      await client.query(
+        `UPDATE users SET email=$1 WHERE id=$2`,
+        [emailInput, userId]
+      );
+    }
+
+    const storedPreference = usePreferenceInput;
+    if (storedPreference !== null && storedPreference !== (userRow.use_preference || "buy")) {
+      await client.query(
+        `UPDATE users SET use_preference=$1 WHERE id=$2`,
+        [storedPreference, userId]
+      );
+    }
+    if (storedPreference === "upload" && userRow.role === "buyer") {
+      await client.query(
+        `UPDATE users SET role='designer' WHERE id=$1`,
+        [userId]
+      );
+      userRow.role = "designer";
+    }
+    if (storedPreference === "upload" && !wantsPayoutUpdate) {
+      const payoutQ = await client.query(
+        `SELECT payout_alias, payout_cbu FROM designers WHERE user_id=$1 LIMIT 1`,
+        [userId]
+      );
+      const existingPayout = payoutQ.rows[0] || {};
+      if (!existingPayout.payout_alias && !existingPayout.payout_cbu) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Completá alias o CBU para poder cobrar comisiones." });
+      }
+    }
+
+    if (wantsAddressUpdate) {
+      const phoneInput = cleanDigits(phone, 10);
+      const countryInput = cleanText(country || "Argentina", 80) || "Argentina";
+      const provinceInput = cleanText(province, 80);
+      const cityInput = cleanText(city, 100);
+      const streetInput = cleanText(street, 120);
+      const streetNumberInput = cleanText(street_number, 20);
+      const floorApartmentInput = cleanText(floor_apartment, 80);
+      const postalCodeInput = normalizePostalCodeAR(postal_code);
+      const notesInput = cleanText(notes, 240);
+
+      if (!/^\d{10}$/.test(phoneInput)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "El teléfono debe tener 10 dígitos." });
+      }
+      if (countryInput !== "Argentina") {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Por ahora solo se aceptan direcciones de Argentina." });
+      }
+      if (!ARG_PROVINCES.has(provinceInput)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Seleccioná una provincia válida." });
+      }
+      if (!cityInput || !streetInput || !streetNumberInput) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Completá localidad, calle y altura." });
+      }
+      if (!validPostalCodeAR(postalCodeInput)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Código postal inválido." });
+      }
+
+      const currentAddressQ = await client.query(
+        `SELECT id
+           FROM user_addresses
+          WHERE user_id=$1
+          ORDER BY is_default DESC, created_at DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [userId]
+      );
+
+      const addressValues = [
+        phoneInput,
+        countryInput,
+        provinceInput,
+        cityInput,
+        streetInput,
+        streetNumberInput,
+        floorApartmentInput || null,
+        postalCodeInput,
+        notesInput || null
+      ];
+
+      if (currentAddressQ.rowCount) {
+        await client.query(
+          `UPDATE user_addresses
+              SET phone=$1,
+                  country=$2,
+                  province=$3,
+                  city=$4,
+                  street=$5,
+                  street_number=$6,
+                  floor_apartment=$7,
+                  postal_code=$8,
+                  notes=$9,
+                  is_default=TRUE,
+                  updated_at=now()
+            WHERE id=$10`,
+          [...addressValues, currentAddressQ.rows[0].id]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO user_addresses
+             (user_id, phone, country, province, city, street, street_number,
+              floor_apartment, postal_code, notes, is_default)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE)`,
+          [userId, ...addressValues]
+        );
+      }
+    }
+
+    if (wantsPayoutUpdate) {
+      const payoutAliasInput = cleanText(payout_alias, 30);
+      const payoutCbuInput = cleanDigits(payout_cbu, 22);
+      const shouldCollectPayout =
+        userRow.role === "designer" ||
+        (usePreferenceInput || userRow.use_preference || "") === "upload";
+
+      if (shouldCollectPayout && !payoutAliasInput && !payoutCbuInput) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Completá alias o CBU para poder cobrar comisiones." });
+      }
+      if (payoutAliasInput && !validPayoutAlias(payoutAliasInput)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Alias inválido. Usá entre 6 y 30 caracteres." });
+      }
+      if (payoutCbuInput && !validPayoutCbu(payoutCbuInput)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "El CBU/CVU debe tener 22 dígitos." });
+      }
+      if (shouldCollectPayout || payoutAliasInput || payoutCbuInput) {
+        await client.query(
+          `INSERT INTO designers (user_id, display_name, avatar_url, payout_alias, payout_cbu)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (user_id)
+           DO UPDATE SET
+             display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), designers.display_name),
+             avatar_url = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), designers.avatar_url),
+             payout_alias = EXCLUDED.payout_alias,
+             payout_cbu = EXCLUDED.payout_cbu
+           RETURNING id`,
+          [
+            userId,
+            aliasInput || userRow.username || userRow.name || userRow.email || "Diseñador",
+            userRow.avatar_url || DEFAULT_AVATAR,
+            payoutAliasInput || null,
+            payoutCbuInput || null
+          ]
+        );
+      }
     }
 
     await client.query("COMMIT");
@@ -638,9 +1006,10 @@ router.put(
     try {
       if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
       const userId = req.user.id;
-      const designer = await ensureDesigner(userId);
       const current = await pool.query(
-        `SELECT u.avatar_url AS user_avatar_url, d.avatar_url AS designer_avatar_url
+        `SELECT u.avatar_url AS user_avatar_url,
+                d.id AS designer_id,
+                d.avatar_url AS designer_avatar_url
            FROM users u
            LEFT JOIN designers d ON d.user_id = u.id
           WHERE u.id = $1
@@ -650,7 +1019,7 @@ router.put(
       const prevUrl =
         current.rows[0]?.user_avatar_url || current.rows[0]?.designer_avatar_url || "";
 
-      const outputName = `${designer.id}-${Date.now()}.jpg`;
+      const outputName = `${userId}-${Date.now()}.jpg`;
       const outputPath = path.join(avatarsDir, outputName);
       const buffer = await sharp(req.file.buffer)
         .resize({ width: 512, height: 512, fit: "cover" })
@@ -663,10 +1032,12 @@ router.put(
         `UPDATE users SET avatar_url=$1 WHERE id=$2`,
         [url, userId]
       );
-      await pool.query(
-        `UPDATE designers SET avatar_url=$1 WHERE id=$2`,
-        [url, designer.id]
-      );
+      if (current.rows[0]?.designer_id) {
+        await pool.query(
+          `UPDATE designers SET avatar_url=$1 WHERE id=$2`,
+          [url, current.rows[0].designer_id]
+        );
+      }
 
       if (
         prevUrl &&

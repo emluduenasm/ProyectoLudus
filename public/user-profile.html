@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Mi perfil · Ludus Stamps</title>
+  <title>Mi perfil &middot; Ludus Stamps</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <link rel="stylesheet" href="/styles.css"/>
   <style>
@@ -13,7 +13,10 @@
     .profile-card{background:#fff;border-radius:14px;box-shadow:var(--shadow-sm,0 2px 10px rgba(2,6,23,.06));padding:1.5rem}
     .profile-grid{display:grid;gap:1rem 1.2rem;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-top:1rem}
     .profile-grid label{display:flex;flex-direction:column;font-size:.9rem;color:#475569}
-    .profile-grid input, .profile-grid select{margin-top:.35rem}
+    .profile-grid input,.profile-grid select,.profile-grid textarea{margin-top:.35rem}
+    .profile-grid textarea{min-height:82px;resize:vertical}
+    .profile-grid input[readonly]{background:#f8fafc;color:#64748b}
+    .profile-section{grid-column:1/-1;margin:.35rem 0 0;font-size:1rem;color:#0f172a}
     .profile-stats{display:flex;gap:1.5rem;margin-top:1.25rem}
     .profile-stats div{display:flex;flex-direction:column;gap:.1rem;color:#475569}
     .profile-stats strong{font-size:1.4rem;color:#0f172a}
@@ -31,7 +34,7 @@
       <a class="brand" href="/"><img src="/img/logo.png" alt="Logo"/></a>
       <nav class="menu">
         <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
-        <a href="/designs.html"><i class="fa-solid fa-palette"></i> Diseños</a>
+        <a href="/designs.html"><i class="fa-solid fa-palette"></i> Dise&ntilde;os</a>
       </nav>
     </div>
   </header>
@@ -40,41 +43,114 @@
     <h1>Mi perfil</h1>
 
     <nav class="admin-subnav" style="margin-bottom:1rem">
-      <a href="/user-designs.html" class="tab"><i class="fa-solid fa-rectangle-list"></i> Mis diseños</a>
-      <a href="/upload.html" class="tab"><i class="fa-solid fa-cloud-arrow-up"></i> Subir diseño</a>
-      <a href="/designer-sales.html" class="tab"><i class="fa-solid fa-chart-line"></i> Mis ventas</a>
-      <a href="/user-orders.html" class="tab"><i class="fa-solid fa-bag-shopping"></i> Mis compras</a>
       <a href="/user-profile.html" class="tab"><i class="fa-solid fa-user-gear"></i> Mi perfil</a>
+      <a href="/user-orders.html" class="tab"><i class="fa-solid fa-bag-shopping"></i> Mis compras</a>
+      <a href="/upload.html" class="tab"><i class="fa-solid fa-cloud-arrow-up"></i> Subir dise&ntilde;o</a>
     </nav>
 
     <div class="profile-layout">
       <section class="profile-card">
         <h2 style="margin:0">Datos personales</h2>
-        <p class="muted" style="margin-top:.35rem">Actualizá tu información y cómo querés que te vean en la plataforma.</p>
+        <p class="muted" style="margin-top:.35rem">Actualiz&aacute; tu informaci&oacute;n de contacto, facturaci&oacute;n y c&oacute;mo quer&eacute;s que te vean en la plataforma.</p>
 
         <form id="formProfile" class="profile-grid" novalidate>
           <label>Alias / Usuario
-            <input class="input" type="text" name="username" required minlength="3" maxlength="32" />
-            <span class="hint">Letras, números, punto o guion bajo.</span>
+            <input class="input" type="text" name="username" required minlength="3" maxlength="32"/>
+            <span class="hint">Letras, n&uacute;meros, punto o guion bajo.</span>
           </label>
           <label>Email
-            <input class="input" type="email" name="email" readonly />
+            <input class="input" type="email" name="email" required/>
+          </label>
+          <label>Preferencia de uso
+            <select class="input" name="use_preference" required>
+              <option value="buy">Comprar</option>
+              <option value="upload">Subir dise&ntilde;os</option>
+            </select>
           </label>
           <label>Nombres
-            <input class="input" type="text" name="first_name" required minlength="2" />
+            <input class="input" type="text" name="first_name" readonly/>
+            <span class="hint">Solo puede editarlo un administrador.</span>
           </label>
           <label>Apellidos
-            <input class="input" type="text" name="last_name" required minlength="2" />
+            <input class="input" type="text" name="last_name" readonly/>
+            <span class="hint">Solo puede editarlo un administrador.</span>
           </label>
           <label>DNI
-            <input class="input" type="text" name="dni" inputmode="numeric" maxlength="8" required />
+            <input class="input" type="text" name="dni" inputmode="numeric" maxlength="8" readonly/>
+            <span class="hint">Solo puede editarlo un administrador.</span>
           </label>
+
+          <h3 class="profile-section">Direcci&oacute;n de contacto y facturaci&oacute;n</h3>
+          <label>Tel&eacute;fono / WhatsApp
+            <input class="input" type="tel" name="phone" inputmode="numeric" maxlength="10" required/>
+            <span class="hint">10 d&iacute;gitos, sin 0 ni 15.</span>
+          </label>
+          <label>Pa&iacute;s
+            <input class="input" type="text" name="country" value="Argentina" readonly/>
+          </label>
+          <label>Provincia
+            <select class="input" name="province" required>
+              <option value="">Seleccion&aacute; una provincia</option>
+              <option>Buenos Aires</option>
+              <option>Catamarca</option>
+              <option>Chaco</option>
+              <option>Chubut</option>
+              <option>Ciudad Autonoma de Buenos Aires</option>
+              <option>Cordoba</option>
+              <option>Corrientes</option>
+              <option>Entre Rios</option>
+              <option>Formosa</option>
+              <option>Jujuy</option>
+              <option>La Pampa</option>
+              <option>La Rioja</option>
+              <option>Mendoza</option>
+              <option>Misiones</option>
+              <option>Neuquen</option>
+              <option>Rio Negro</option>
+              <option>Salta</option>
+              <option>San Juan</option>
+              <option>San Luis</option>
+              <option>Santa Cruz</option>
+              <option>Santa Fe</option>
+              <option>Santiago del Estero</option>
+              <option>Tierra del Fuego</option>
+              <option>Tucuman</option>
+            </select>
+          </label>
+          <label>Localidad / Ciudad
+            <input class="input" type="text" name="city" maxlength="100" required/>
+          </label>
+          <label>Calle
+            <input class="input" type="text" name="street" maxlength="120" required/>
+          </label>
+          <label>Altura / N&uacute;mero
+            <input class="input" type="text" name="street_number" maxlength="20" required/>
+          </label>
+          <label>Piso / Depto / Casa
+            <input class="input" type="text" name="floor_apartment" maxlength="80"/>
+          </label>
+          <label>C&oacute;digo postal
+            <input class="input" type="text" name="postal_code" maxlength="8" required/>
+          </label>
+          <label style="grid-column:1/-1">Referencias para la entrega
+            <textarea class="input" name="notes" maxlength="240"></textarea>
+          </label>
+
+          <div id="payoutSection" class="profile-grid" style="display:none;grid-column:1/-1;margin-top:0">
+            <h3 class="profile-section">Datos de cobro</h3>
+            <label>Alias de cobro
+              <input class="input" type="text" name="payout_alias" maxlength="30"/>
+            </label>
+            <label>CBU / CVU
+              <input class="input" type="text" name="payout_cbu" inputmode="numeric" maxlength="22"/>
+            </label>
+          </div>
         </form>
 
         <div class="profile-stats">
           <div>
             <strong id="statDesigns">0</strong>
-            <span class="muted-sm">Diseños publicados</span>
+            <span class="muted-sm">Dise&ntilde;os publicados</span>
           </div>
           <div>
             <strong id="statLikes">0</strong>
@@ -90,17 +166,17 @@
 
       <section class="profile-card">
         <h2 style="margin:0">Imagen de perfil</h2>
-        <p class="muted" style="margin-top:.35rem">Usá un logo cuadrado o tu foto para que te reconozcan.</p>
+        <p class="muted" style="margin-top:.35rem">Us&aacute; un logo cuadrado o tu foto para que te reconozcan.</p>
 
         <div class="avatar-box">
           <div class="avatar-preview">
-            <img id="avatarPreview" alt="Avatar del diseñador" src="/img/disenador1.jpg"/>
+            <img id="avatarPreview" alt="Avatar del dise&ntilde;ador" src="/img/disenador1.jpg"/>
           </div>
           <form id="formAvatar" style="width:100%" novalidate>
             <label class="input" style="padding:.4rem .75rem;display:block">
               <input type="file" id="avatarFile" name="avatar" accept="image/png,image/jpeg,image/webp" style="border:0;width:100%;padding:0"/>
             </label>
-            <div class="hint">PNG, JPG o WEBP hasta 4 MB. Se ajustará automáticamente.</div>
+            <div class="hint">PNG, JPG o WEBP hasta 4 MB. Se ajustar&aacute; autom&aacute;ticamente.</div>
             <div class="form-actions" style="margin-top:1rem;justify-content:flex-start">
               <button class="btn btn-primary" type="submit">Actualizar imagen</button>
               <span id="msgAvatar" class="msg"></span>
@@ -113,7 +189,7 @@
 
   <footer class="site-footer">
     <div class="container footer-grid">
-      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p>&copy; 2025 Ludus Stamps. Todos los derechos reservados.</p>
       <p><a class="link" href="#contacto">Contacto</a></p>
     </div>
   </footer>

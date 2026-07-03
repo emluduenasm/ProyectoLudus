@@ -7,14 +7,42 @@
   const authHeaders = () => (token ? { Authorization: `Bearer ${token}` } : {});
 
   const CART_KEY = "ludus_cart";
+  const CART_KEY_PREFIX = `${CART_KEY}:user:`;
   const cartListeners = new Set();
+  const cartUserId = getTokenUserId(token);
+  const cartStorageKey = cartUserId ? `${CART_KEY_PREFIX}${cartUserId}` : null;
   let cartItems = loadCartItems();
 
-  function loadCartItems() {
+  function getTokenUserId(rawToken) {
+    if (!rawToken || !rawToken.includes(".")) return "";
     try {
-      const raw = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
+      const payload = rawToken.split(".")[1] || "";
+      const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+      const json = decodeURIComponent(
+        Array.from(atob(padded), (char) =>
+          `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`
+        ).join("")
+      );
+      return String(JSON.parse(json)?.id || "");
+    } catch {
+      return "";
+    }
+  }
+
+  function loadCartItems() {
+    if (!cartStorageKey) return [];
+    try {
+      const scopedCart = localStorage.getItem(cartStorageKey);
+      const legacyCart = localStorage.getItem(CART_KEY);
+      const raw = JSON.parse(scopedCart || legacyCart || "[]");
       if (!Array.isArray(raw)) return [];
-      return raw.map(normalizeCartItem).filter(Boolean);
+      const normalized = raw.map(normalizeCartItem).filter(Boolean);
+      if (!scopedCart && legacyCart && normalized.length) {
+        localStorage.setItem(cartStorageKey, JSON.stringify(normalized));
+        localStorage.removeItem(CART_KEY);
+      }
+      return normalized;
     } catch {
       return [];
     }
@@ -48,13 +76,48 @@
     return { items, count, total };
   }
 
-  function persistCart() {
+  function cacheCart() {
+    if (!cartStorageKey) {
+      cartItems = [];
+      notifyCart();
+      return false;
+    }
     try {
-      localStorage.setItem(CART_KEY, JSON.stringify(cartItems));
+      localStorage.setItem(cartStorageKey, JSON.stringify(cartItems));
+      localStorage.removeItem(CART_KEY);
     } catch (err) {
       console.error("No se pudo guardar el carrito", err);
     }
     notifyCart();
+    return true;
+  }
+
+  function applyServerCart(data = {}) {
+    cartItems = Array.isArray(data.items)
+      ? data.items.map(normalizeCartItem).filter(Boolean)
+      : [];
+    return cacheCart();
+  }
+
+  async function requestCart(path, options = {}) {
+    if (!cartStorageKey || !token) return false;
+    const res = await fetch(api(path), {
+      ...options,
+      headers: {
+        ...authHeaders(),
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {})
+      },
+      cache: "no-store"
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 401) localStorage.removeItem("token");
+      throw new Error(data?.error || "No se pudo sincronizar el carrito.");
+    }
+    applyServerCart(data);
+    return true;
   }
 
   function notifyCart() {
@@ -69,36 +132,66 @@
   }
 
   const CartStore = {
+    isAuthenticated: () => Boolean(cartStorageKey),
     getItems: () => snapshotCart().items,
     getCount: () => snapshotCart().count,
     getTotal: () => snapshotCart().total,
-    addItem(data = {}) {
-      const normalized = normalizeCartItem({ ...data, quantity: data.quantity || 1 });
-      if (!normalized) return;
-      const idx = cartItems.findIndex((item) => item.key === normalized.key);
-      if (idx >= 0) {
-        cartItems[idx].quantity += normalized.quantity;
-      } else {
-        cartItems.push(normalized);
+    async init() {
+      if (!cartStorageKey || !token) {
+        cartItems = [];
+        notifyCart();
+        return false;
       }
-      persistCart();
+      const cachedItems = snapshotCart().items;
+      await requestCart("/cart");
+      const syncKey = `${cartStorageKey}:db-synced`;
+      if (!localStorage.getItem(syncKey) && !CartStore.getItems().length && cachedItems.length) {
+        for (const item of cachedItems) {
+          await requestCart("/cart/items", {
+            method: "POST",
+            body: JSON.stringify({
+              design_id: item.design_id,
+              product_id: item.product_id,
+              quantity: item.quantity
+            })
+          });
+        }
+      }
+      try {
+        localStorage.setItem(syncKey, "true");
+      } catch {}
+      return true;
     },
-    updateQuantity(key, quantity) {
-      const idx = cartItems.findIndex((item) => item.key === key);
-      if (idx === -1) return;
+    async addItem(data = {}) {
+      if (!cartStorageKey) return false;
+      const normalized = normalizeCartItem({ ...data, quantity: data.quantity || 1 });
+      if (!normalized) return false;
+      return requestCart("/cart/items", {
+        method: "POST",
+        body: JSON.stringify({
+          design_id: normalized.design_id,
+          product_id: normalized.product_id,
+          quantity: normalized.quantity
+        })
+      });
+    },
+    async updateQuantity(key, quantity) {
+      if (!cartStorageKey) return false;
       const nextQty = Math.max(1, Number.parseInt(quantity, 10) || 1);
-      cartItems[idx].quantity = nextQty;
-      persistCart();
+      return requestCart(`/cart/items/${encodeURIComponent(key)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ quantity: nextQty })
+      });
     },
-    removeItem(key) {
-      const next = cartItems.filter((item) => item.key !== key);
-      if (next.length === cartItems.length) return;
-      cartItems = next;
-      persistCart();
+    async removeItem(key) {
+      if (!cartStorageKey) return false;
+      return requestCart(`/cart/items/${encodeURIComponent(key)}`, {
+        method: "DELETE"
+      });
     },
-    clear() {
-      cartItems = [];
-      persistCart();
+    async clear() {
+      if (!cartStorageKey) return false;
+      return requestCart("/cart", { method: "DELETE" });
     },
     subscribe(fn) {
       if (typeof fn !== "function") return () => {};
@@ -129,7 +222,7 @@
         nav.appendChild(admin);
       } else {
         const panel = document.createElement("a");
-        panel.href = "/user-designs.html";
+        panel.href = "/user-profile.html";
         panel.className = "btn btn-primary ui-slot";
         panel.innerHTML = `<i class="fa-solid fa-table-columns"></i> Panel de usuario`;
         nav.appendChild(panel);
@@ -172,7 +265,6 @@
     let cartLink = nav.querySelector(".nav-cart");
     if (!cartLink) {
       cartLink = document.createElement("a");
-      cartLink.href = "/cart.html";
       cartLink.className = "nav-cart";
       cartLink.innerHTML = `
         <i class="fa-solid fa-cart-shopping"></i>
@@ -180,6 +272,9 @@
       `;
       nav.appendChild(cartLink);
     }
+    cartLink.href = CartStore.isAuthenticated()
+      ? "/cart.html"
+      : "/login.html?next=%2Fcart.html";
     const badge = cartLink.querySelector(".cart-badge");
     const updateBadge = (count) => {
       if (!badge) return;
@@ -224,9 +319,111 @@
     }
   }
 
+  async function getMyDesignCount() {
+    if (!token) return 0;
+    try {
+      const res = await fetch(api("/designs/mine"), {
+        headers: { ...authHeaders(), "Accept": "application/json" },
+        cache: "no-store"
+      });
+      if (!res.ok) return 0;
+      const data = await res.json();
+      return Array.isArray(data) ? data.length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  async function getMyOrderCount() {
+    if (!token) return 0;
+    try {
+      const res = await fetch(api("/orders/mine?limit=1"), {
+        headers: { ...authHeaders(), "Accept": "application/json" },
+        cache: "no-store"
+      });
+      if (!res.ok) return 0;
+      const data = await res.json();
+      return Number(data?.total || 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  async function renderUserPanelNav(me) {
+    const navs = document.querySelectorAll(".admin-subnav");
+    if (!me || !navs.length || me.role === "admin") return;
+
+    const userPaths = new Set([
+      "/user-profile.html",
+      "/user-orders.html",
+      "/upload.html",
+      "/user-designs.html",
+      "/designer-sales.html"
+    ]);
+    const panelNavs = [...navs].filter((nav) =>
+      [...nav.querySelectorAll("a[href]")].some((a) => userPaths.has(new URL(a.href, location.origin).pathname))
+    );
+    if (!panelNavs.length) return;
+
+    const [designCount, orderCount] = await Promise.all([
+      getMyDesignCount(),
+      getMyOrderCount()
+    ]);
+    const prefersDesigner = me.use_preference
+      ? me.use_preference === "upload"
+      : me.role === "designer";
+    const hasDesignerTools = prefersDesigner || designCount > 0;
+    const hasPurchases = orderCount > 0;
+    const here = location.pathname.replace(/\/+$/, "");
+    if (!hasDesignerTools && (here === "/user-designs.html" || here === "/designer-sales.html")) {
+      location.replace("/user-profile.html");
+      return;
+    }
+    if (prefersDesigner && !hasPurchases && here === "/user-orders.html") {
+      location.replace("/user-profile.html");
+      return;
+    }
+
+    const profileLink = { href: "/user-profile.html", icon: "fa-user-gear", text: "Mi perfil" };
+    const ordersLink = { href: "/user-orders.html", icon: "fa-bag-shopping", text: "Mis compras" };
+    const uploadLink = { href: "/upload.html", icon: "fa-cloud-arrow-up", text: "Subir dise&ntilde;o" };
+    const designsLink = { href: "/user-designs.html", icon: "fa-rectangle-list", text: "Mis dise&ntilde;os" };
+    const salesLink = { href: "/designer-sales.html", icon: "fa-chart-line", text: "Mis ventas" };
+
+    const links = prefersDesigner
+      ? [
+          profileLink,
+          uploadLink,
+          ...(hasDesignerTools ? [designsLink, salesLink] : []),
+          ...(hasPurchases ? [ordersLink] : [])
+        ]
+      : [
+          profileLink,
+          ordersLink,
+          uploadLink,
+          ...(hasDesignerTools ? [designsLink, salesLink] : [])
+        ];
+
+    panelNavs.forEach((nav) => {
+      nav.innerHTML = links
+        .map((link) => {
+          const active = here === link.href ? " active" : "";
+          return `<a href="${link.href}" class="tab${active}"><i class="fa-solid ${link.icon}"></i> ${link.text}</a>`;
+        })
+        .join("");
+    });
+  }
+
   async function boot() {
     const me = await getMe();
+    if (me) {
+      await CartStore.init().catch((err) => console.error("cart init error", err));
+    } else {
+      cartItems = [];
+      notifyCart();
+    }
     renderHeader(me);
+    await renderUserPanelNav(me);
 
     // Reglas para /admin
     const isAdminPage = location.pathname.startsWith("/admin/");
@@ -244,6 +441,18 @@
       }
     }
   }
+
+  async function refreshUserPanelNav() {
+    const me = await getMe();
+    await renderUserPanelNav(me);
+  }
+
+  window.LudusAuthUI = {
+    ...(window.LudusAuthUI || {}),
+    refreshUserPanelNav
+  };
+  window.addEventListener("ludus:user-preference-updated", refreshUserPanelNav);
+  window.addEventListener("ludus:user-panel-nav-refresh", refreshUserPanelNav);
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot, { once: true });

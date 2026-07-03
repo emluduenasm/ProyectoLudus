@@ -7,6 +7,19 @@
 
 const api = (path) => `/api/auth${path}`;
 
+const safeNextPath = () => {
+  const raw = new URLSearchParams(window.location.search).get("next");
+  if (!raw) return "";
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin !== window.location.origin) return "";
+    if (url.pathname === "/login.html" || url.pathname === "/register.html") return "";
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "";
+  }
+};
+
 /* ==========================
    Utilidades DOM / helpers
 ========================== */
@@ -66,6 +79,36 @@ const clearFeedback = (input) => {
 ========================== */
 const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 const isUsername = (v) => /^[a-zA-Z0-9._-]{3,30}$/.test(v);
+const ARG_PROVINCES = new Set([
+  "Buenos Aires",
+  "Catamarca",
+  "Chaco",
+  "Chubut",
+  "Ciudad Autonoma de Buenos Aires",
+  "Cordoba",
+  "Corrientes",
+  "Entre Rios",
+  "Formosa",
+  "Jujuy",
+  "La Pampa",
+  "La Rioja",
+  "Mendoza",
+  "Misiones",
+  "Neuquen",
+  "Rio Negro",
+  "Salta",
+  "San Juan",
+  "San Luis",
+  "Santa Cruz",
+  "Santa Fe",
+  "Santiago del Estero",
+  "Tierra del Fuego",
+  "Tucuman"
+]);
+const phoneDigitsAR = (value) => String(value || "").replace(/\D/g, "");
+const isPhoneAR = (value) => phoneDigitsAR(value).length === 10;
+const normalizePostalCodeAR = (value) => String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+const isPostalCodeAR = (value) => /^\d{4}$/.test(normalizePostalCodeAR(value)) || /^[A-Z]\d{4}[A-Z]{3}$/.test(normalizePostalCodeAR(value));
 
 // Nombres/apellidos: letras (incluye acentos/ñ/ü), espacios, apóstrofe y guion
 const nameRegex = /^[\p{L}ÁÉÍÓÚáéíóúÑñÜü' -]{2,80}$/u;
@@ -99,6 +142,17 @@ if (formRegister) {
   const email     = byName(formRegister, "email");
   const password  = byName(formRegister, "password");
   const usePref   = byName(formRegister, "use_preference");
+  const phone     = byName(formRegister, "phone");
+  const country   = byName(formRegister, "country");
+  const province  = byName(formRegister, "province");
+  const city      = byName(formRegister, "city");
+  const street    = byName(formRegister, "street");
+  const streetNumber = byName(formRegister, "street_number");
+  const postalCode = byName(formRegister, "postal_code");
+  const payoutAlias = byName(formRegister, "payout_alias");
+  const payoutCbu = byName(formRegister, "payout_cbu");
+  const shippingFields = Array.from(formRegister.querySelectorAll(".shipping-field, #shippingFields"));
+  const payoutFields = Array.from(formRegister.querySelectorAll(".payout-field, #payoutFields"));
   const avatarInput = byName(formRegister, "avatar");
   const avatarPreviewBox = document.getElementById("avatarPreview");
   const avatarPreviewImg = document.getElementById("avatarPreviewImg");
@@ -167,6 +221,39 @@ if (formRegister) {
     i.style.background = colors[score];
   }
 
+  const wantsPayout = () => usePref.value === "upload";
+  const setGroupVisible = (items, visible) => {
+    items.forEach((el) => {
+      el.hidden = !visible;
+      el.querySelectorAll?.("input, textarea, select").forEach((input) => {
+        input.disabled = !visible;
+      });
+    });
+  };
+  const syncPreferenceFields = () => {
+    const needPayout = wantsPayout();
+    setGroupVisible(shippingFields, true);
+    setGroupVisible(payoutFields, needPayout);
+    [phone, country, province, city, street, streetNumber, postalCode]
+      .filter(Boolean)
+      .forEach((input) => {
+        input.required = true;
+      });
+    [payoutAlias, payoutCbu].filter(Boolean).forEach((input) => {
+      input.required = false;
+      if (!needPayout) clearFeedback(input);
+    });
+  };
+  const requiredText = (input, label, min = 2, max = 120) => {
+    const val = input.value.trim();
+    if (val.length < min || val.length > max) {
+      setError(input, `${label} requerido`);
+      return false;
+    }
+    setOK(input);
+    return true;
+  };
+
   const v = {
     firstName(){ 
       const val = firstName.value.trim();
@@ -212,7 +299,46 @@ if (formRegister) {
     },
     usePref(){
       if (!usePref.value) return setError(usePref, "Seleccioná una opción");
+      syncPreferenceFields();
       setOK(usePref);
+      return true;
+    },
+    shipping(){
+      phone.value = phoneDigitsAR(phone.value).slice(0, 10);
+      postalCode.value = normalizePostalCodeAR(postalCode.value);
+      const ok = [
+        isPhoneAR(phone.value) ? (setOK(phone), true) : (setError(phone, "Telefono argentino: 10 digitos, sin 0 ni 15"), false),
+        requiredText(country, "Pais", 2, 80),
+        ARG_PROVINCES.has(province.value) ? (setOK(province), true) : (setError(province, "Selecciona una provincia"), false),
+        requiredText(city, "Localidad", 2, 80),
+        requiredText(street, "Calle", 2, 120),
+        requiredText(streetNumber, "Altura", 1, 20),
+        isPostalCodeAR(postalCode.value) ? (setOK(postalCode), true) : (setError(postalCode, "Codigo postal invalido"), false)
+      ];
+      return ok.every(Boolean);
+    },
+    payout(){
+      if (!wantsPayout()) return true;
+      const alias = payoutAlias.value.trim();
+      const cbu = payoutCbu.value.replace(/\D/g, "");
+      payoutCbu.value = cbu;
+      clearFeedback(payoutAlias);
+      clearFeedback(payoutCbu);
+      if (!alias && !cbu) {
+        setError(payoutAlias, "Carga alias o CBU/CVU");
+        setError(payoutCbu, "Carga alias o CBU/CVU");
+        return false;
+      }
+      if (alias && !/^[A-Za-z0-9._-]{6,30}$/.test(alias)) {
+        setError(payoutAlias, "Alias invalido (6-30: letras, numeros, . _ -)");
+        return false;
+      }
+      if (cbu && !/^\d{22}$/.test(cbu)) {
+        setError(payoutCbu, "CBU/CVU debe tener 22 digitos");
+        return false;
+      }
+      if (alias) setOK(payoutAlias);
+      if (cbu) setOK(payoutCbu);
       return true;
     },
   };
@@ -250,6 +376,12 @@ if (formRegister) {
   email.addEventListener("input", v.email);
   password.addEventListener("input", v.password);
   usePref.addEventListener("change", v.usePref);
+  [phone, country, province, city, street, streetNumber, postalCode]
+    .filter(Boolean)
+    .forEach((input) => input.addEventListener("input", v.shipping));
+  [payoutAlias, payoutCbu]
+    .filter(Boolean)
+    .forEach((input) => input.addEventListener("input", v.payout));
   if (avatarInput && v.avatar) {
     avatarInput.addEventListener("change", () => v.avatar());
   }
@@ -261,7 +393,7 @@ if (formRegister) {
 
     const validations = [
       v.firstName(), v.lastName(), v.dni(),
-      v.username(), v.email(), v.password(), v.usePref()
+      v.username(), v.email(), v.password(), v.usePref(), v.shipping(), v.payout()
     ];
 
     if (typeof v.avatar === "function") {
@@ -312,7 +444,7 @@ if (formRegister) {
 
       // Redirige según preferencia (el backend mapea a rol)
       const prefValue = usePref.value;
-      const isUpload = prefValue === "upload" || prefValue === "both";
+      const isUpload = prefValue === "upload";
       const next = isUpload ? "/upload.html" : "/";
       setTimeout(() => (window.location.href = next), 700);
     } catch (err) {
@@ -390,6 +522,7 @@ if (formRegister) {
       clearFeedback(avatarInput);
     });
   }
+  syncPreferenceFields();
 
 }
 
@@ -457,6 +590,7 @@ if (formLogin) {
 
     // 3) Obtener rol con /me (porque /login no lo devuelve)
     let role = null;
+    let usePreference = null;
     try {
       const meRes = await fetch("/api/auth/me", {
         headers: { Authorization: `Bearer ${data.token}`, "Accept": "application/json" },
@@ -465,14 +599,18 @@ if (formLogin) {
       if (meRes.ok) {
         const me = await meRes.json();
         // según si usas controlador u rutas clásicas, me puede venir como { user:{...} } o directo
-        role = me?.user?.role || me?.role || null;
+        const currentUser = me?.user || me || {};
+        role = currentUser.role || null;
+        usePreference = currentUser.use_preference || null;
       }
     } catch { /* ignorar: si falla, caemos al default */ }
 
     // 4) Redirección por rol
-    let next = "/";
+    let next = "/designs.html";
     if (role === "admin")        next = "/admin/users.html";
-    else if (role === "designer") next = "/upload.html";
+    else if (usePreference === "upload" || role === "designer") next = "/upload.html";
+    else if (usePreference === "buy" || role === "buyer") next = "/designs.html";
+    next = safeNextPath() || next;
     // buyers y otros → home
     setTimeout(() => (window.location.href = next), 300);
   } catch (err) {

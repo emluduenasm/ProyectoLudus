@@ -36,8 +36,15 @@ const bootstrap = async () => {
       user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE,
       display_name TEXT NOT NULL,
       avatar_url TEXT,
+      payout_alias TEXT,
+      payout_cbu TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+  `);
+  await pool.query(`
+    ALTER TABLE designers
+      ADD COLUMN IF NOT EXISTS payout_alias TEXT,
+      ADD COLUMN IF NOT EXISTS payout_cbu TEXT;
   `);
 
   await pool.query(`
@@ -58,6 +65,7 @@ const bootstrap = async () => {
       designer_id UUID NOT NULL REFERENCES designers(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
+      tags TEXT[] NOT NULL DEFAULT '{}',
       image_url TEXT NOT NULL,
       thumbnail_url TEXT,
       published BOOLEAN NOT NULL DEFAULT false,
@@ -189,6 +197,10 @@ const bootstrap = async () => {
   `);
   await pool.query(`
     ALTER TABLE designs
+      ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+  `);
+  await pool.query(`
+    ALTER TABLE designs
       ADD COLUMN IF NOT EXISTS review_status TEXT DEFAULT 'pending';
   `);
   await pool.query(`
@@ -210,6 +222,15 @@ const bootstrap = async () => {
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       total_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
+      shipping_phone TEXT,
+      shipping_country TEXT,
+      shipping_province TEXT,
+      shipping_city TEXT,
+      shipping_street TEXT,
+      shipping_street_number TEXT,
+      shipping_floor_apartment TEXT,
+      shipping_postal_code TEXT,
+      shipping_notes TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
@@ -239,6 +260,25 @@ const bootstrap = async () => {
     );
     CREATE INDEX IF NOT EXISTS idx_design_likes_design ON design_likes (design_id);
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cart_items (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      design_id UUID NOT NULL REFERENCES designs(id) ON DELETE CASCADE,
+      product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+      added_count INTEGER NOT NULL DEFAULT 1 CHECK (added_count > 0),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      first_added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      removed_at TIMESTAMPTZ,
+      UNIQUE (user_id, design_id, product_id)
+    );
+    CREATE INDEX IF NOT EXISTS cart_items_user_active_idx ON cart_items(user_id, removed_at);
+    CREATE INDEX IF NOT EXISTS cart_items_updated_at_idx ON cart_items(updated_at);
+  `);
 };
 
 const runSupplementalMigrations = async () => {
@@ -252,6 +292,50 @@ const runSupplementalMigrations = async () => {
       dni        VARCHAR(20) UNIQUE NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_addresses (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      label TEXT NOT NULL DEFAULT 'Principal',
+      phone TEXT NOT NULL,
+      country TEXT NOT NULL DEFAULT 'Argentina',
+      province TEXT NOT NULL,
+      city TEXT NOT NULL,
+      street TEXT NOT NULL,
+      street_number TEXT NOT NULL,
+      floor_apartment TEXT,
+      postal_code TEXT NOT NULL,
+      notes TEXT,
+      is_default BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS user_addresses_user_id_idx ON user_addresses(user_id);
+  `);
+  await pool.query(`
+    ALTER TABLE user_addresses
+      ADD COLUMN IF NOT EXISTS label TEXT NOT NULL DEFAULT 'Principal',
+      ADD COLUMN IF NOT EXISTS phone TEXT,
+      ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT 'Argentina',
+      ADD COLUMN IF NOT EXISTS province TEXT,
+      ADD COLUMN IF NOT EXISTS city TEXT,
+      ADD COLUMN IF NOT EXISTS street TEXT,
+      ADD COLUMN IF NOT EXISTS street_number TEXT,
+      ADD COLUMN IF NOT EXISTS floor_apartment TEXT,
+      ADD COLUMN IF NOT EXISTS postal_code TEXT,
+      ADD COLUMN IF NOT EXISTS notes TEXT,
+      ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+  `);
+  await pool.query(`
+    UPDATE user_addresses
+       SET country = COALESCE(NULLIF(country, ''), 'Argentina'),
+           label = COALESCE(NULLIF(label, ''), 'Principal'),
+           is_default = COALESCE(is_default, TRUE),
+           updated_at = COALESCE(updated_at, now());
   `);
 
   await pool.query(`
@@ -303,6 +387,10 @@ const runSupplementalMigrations = async () => {
   await pool.query(`
     ALTER TABLE designs
       ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id);
+  `);
+  await pool.query(`
+    ALTER TABLE designs
+      ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
   `);
   await pool.query(`
     ALTER TABLE designs

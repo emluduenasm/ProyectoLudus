@@ -13,10 +13,13 @@
   const msgAvatar = $("#msgAvatar");
   const statDesigns = $("#statDesigns");
   const statLikes = $("#statLikes");
+  const payoutSection = $("#payoutSection");
 
   const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
   const MAX_BYTES = 4 * 1024 * 1024;
+  const POSTAL_RE = /^\d{4}$|^[A-Z]\d{4}[A-Z]{3}$/;
   let currentAvatar = "/img/disenador1.jpg";
+  let payoutVisible = false;
 
   function redirectLogin() {
     const next = encodeURIComponent(location.pathname + location.search);
@@ -30,19 +33,62 @@
     if (type) node.classList.add(type);
   }
 
+  function digits(value) {
+    return String(value || "").replace(/\D/g, "");
+  }
+
+  function normalizePostal(value) {
+    return String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+  }
+
+  function setField(name, value) {
+    if (form?.[name]) form[name].value = value || "";
+  }
+
+  function shouldShowPayout(user, designer) {
+    const preference = user?.use_preference || "buy";
+    return (
+      user?.role === "designer" ||
+      preference === "upload" ||
+      Number(designer?.stats?.designs || 0) > 0
+    );
+  }
+
+  function syncPayoutVisibility(user, designer) {
+    payoutVisible = shouldShowPayout(user, designer);
+    if (payoutSection) {
+      payoutSection.style.display = payoutVisible ? "grid" : "none";
+    }
+  }
+
   function applyProfile(data) {
     if (!data) return;
     const designer = data.designer || {};
     const persona = data.persona || {};
     const user = data.user || {};
+    const address = data.address || {};
 
     if (form) {
-      if (form.username) form.username.value = user.username || "";
-      if (form.email) form.email.value = user.email || "";
-      form.first_name.value = persona.first_name || "";
-      form.last_name.value = persona.last_name || "";
-      form.dni.value = persona.dni || "";
+      setField("username", user.username);
+      setField("email", user.email);
+      setField("use_preference", user.use_preference || "buy");
+      setField("first_name", persona.first_name);
+      setField("last_name", persona.last_name);
+      setField("dni", persona.dni);
+      setField("phone", address.phone);
+      setField("country", address.country || "Argentina");
+      setField("province", address.province);
+      setField("city", address.city);
+      setField("street", address.street);
+      setField("street_number", address.street_number);
+      setField("floor_apartment", address.floor_apartment);
+      setField("postal_code", address.postal_code);
+      setField("notes", address.notes);
+      setField("payout_alias", designer.payout_alias);
+      setField("payout_cbu", designer.payout_cbu);
     }
+
+    syncPayoutVisibility(user, designer);
 
     currentAvatar = designer.avatar_url || currentAvatar;
     if (avatarPreview) {
@@ -81,18 +127,84 @@
     }
   }
 
+  form?.use_preference?.addEventListener("change", () => {
+    syncPayoutVisibility({ use_preference: form.use_preference.value }, {});
+  });
+
+  form?.phone?.addEventListener("input", () => {
+    form.phone.value = digits(form.phone.value).slice(0, 10);
+  });
+
+  form?.payout_cbu?.addEventListener("input", () => {
+    form.payout_cbu.value = digits(form.payout_cbu.value).slice(0, 22);
+  });
+
+  form?.postal_code?.addEventListener("blur", () => {
+    form.postal_code.value = normalizePostal(form.postal_code.value);
+  });
+
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!token) {
       redirectLogin();
       return;
     }
+
+    const phone = digits(form.phone.value);
+    const postalCode = normalizePostal(form.postal_code.value);
     const payload = {
       username: form.username.value.trim(),
-      first_name: form.first_name.value.trim(),
-      last_name: form.last_name.value.trim(),
-      dni: form.dni.value.trim()
+      email: form.email.value.trim().toLowerCase(),
+      use_preference: form.use_preference.value,
+      phone,
+      country: form.country.value.trim() || "Argentina",
+      province: form.province.value,
+      city: form.city.value.trim(),
+      street: form.street.value.trim(),
+      street_number: form.street_number.value.trim(),
+      floor_apartment: form.floor_apartment.value.trim(),
+      postal_code: postalCode,
+      notes: form.notes.value.trim()
     };
+
+    if (!payload.username) {
+      showMsg(msgProfile, "El alias no puede quedar vacio.", "error");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
+      showMsg(msgProfile, "Ingresá un email válido.", "error");
+      return;
+    }
+    if (!/^\d{10}$/.test(phone)) {
+      showMsg(msgProfile, "El teléfono debe tener 10 dígitos.", "error");
+      return;
+    }
+    if (!payload.province || !payload.city || !payload.street || !payload.street_number) {
+      showMsg(msgProfile, "Completá provincia, localidad, calle y altura.", "error");
+      return;
+    }
+    if (!POSTAL_RE.test(postalCode)) {
+      showMsg(msgProfile, "Ingresá un código postal válido.", "error");
+      return;
+    }
+
+    if (payoutVisible) {
+      payload.payout_alias = form.payout_alias.value.trim();
+      payload.payout_cbu = digits(form.payout_cbu.value);
+      if (!payload.payout_alias && !payload.payout_cbu) {
+        showMsg(msgProfile, "Completá alias o CBU para poder cobrar comisiones.", "error");
+        return;
+      }
+      if (payload.payout_alias && !/^[A-Za-z0-9._-]{6,30}$/.test(payload.payout_alias)) {
+        showMsg(msgProfile, "El alias de cobro debe tener entre 6 y 30 caracteres.", "error");
+        return;
+      }
+      if (payload.payout_cbu && !/^\d{22}$/.test(payload.payout_cbu)) {
+        showMsg(msgProfile, "El CBU/CVU debe tener 22 dígitos.", "error");
+        return;
+      }
+    }
+
     showMsg(msgProfile, "", "");
     try {
       const res = await fetch(api("/designers/me"), {
@@ -107,6 +219,7 @@
       }
       if (!res.ok) throw new Error(data?.error || "No se pudieron guardar los cambios.");
       applyProfile(data);
+      window.dispatchEvent(new CustomEvent("ludus:user-preference-updated"));
       showMsg(msgProfile, "Cambios guardados.", "ok");
     } catch (err) {
       showMsg(msgProfile, err.message || "No se pudieron guardar los cambios.", "error");

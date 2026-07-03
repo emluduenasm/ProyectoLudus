@@ -14,7 +14,27 @@
 
   if (!list || !empty || !totalEl) return;
 
+  if (!cartStore.isAuthenticated?.()) {
+    const next = encodeURIComponent(location.pathname + location.search);
+    location.href = `/login.html?next=${next}`;
+    return;
+  }
+
   let unsubscribe = null;
+
+  async function ensureSession() {
+    try {
+      const res = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        cache: "no-store"
+      });
+      if (res.ok) return true;
+    } catch {}
+    localStorage.removeItem("token");
+    const next = encodeURIComponent(location.pathname + location.search);
+    location.href = `/login.html?next=${next}`;
+    return false;
+  }
 
   function formatCurrency(value) {
     return new Intl.NumberFormat("es-AR", {
@@ -28,12 +48,14 @@
       empty.style.display = "block";
       list.innerHTML = "";
       btnCheckout.disabled = true;
+      if (btnClear) btnClear.disabled = true;
       totalEl.textContent = formatCurrency(0);
       return;
     }
 
     empty.style.display = "none";
     btnCheckout.disabled = false;
+    if (btnClear) btnClear.disabled = false;
     totalEl.textContent = formatCurrency(total);
     list.innerHTML = items
       .map((item) => {
@@ -74,7 +96,7 @@
       .replace(/'/g, "&#39;");
   }
 
-  list.addEventListener("click", (ev) => {
+  list.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-action]");
     if (!btn) return;
     const itemEl = btn.closest(".cart-item");
@@ -82,19 +104,31 @@
     const key = itemEl.dataset.key;
     if (!key) return;
     const action = btn.dataset.action;
-    if (action === "inc") {
-      adjustQuantity(key, 1);
-    } else if (action === "dec") {
-      adjustQuantity(key, -1);
-    } else if (action === "remove") {
-      cartStore.removeItem(key);
+    try {
+      setMessage("");
+      if (action === "inc") {
+        await adjustQuantity(key, 1);
+      } else if (action === "dec") {
+        await adjustQuantity(key, -1);
+      } else if (action === "remove") {
+        await cartStore.removeItem(key);
+      }
+    } catch (err) {
+      console.error(err);
+      setMessage(err.message || "No se pudo actualizar el carrito.", true);
     }
   });
 
-  btnClear?.addEventListener("click", () => {
+  btnClear?.addEventListener("click", async () => {
     if (!cartStore.getItems().length) return;
     if (confirm("¿Vaciar carrito?")) {
-      cartStore.clear();
+      try {
+        setMessage("");
+        await cartStore.clear();
+      } catch (err) {
+        console.error(err);
+        setMessage(err.message || "No se pudo vaciar el carrito.", true);
+      }
     }
   });
 
@@ -130,7 +164,7 @@
         const message = [data?.error, data?.detail].filter(Boolean).join(" — ");
         throw new Error(message || "No se pudo crear el pedido.");
       }
-      cartStore.clear();
+      await cartStore.clear().catch((clearErr) => console.error("cart clear after checkout", clearErr));
       setMessage(
         `Pedido #${data?.order?.order_number || "-"} registrado correctamente. Te contactaremos para el pago.`
       );
@@ -143,14 +177,19 @@
     }
   });
 
-  function adjustQuantity(key, delta) {
+  async function adjustQuantity(key, delta) {
     const item = cartStore.getItems().find((it) => it.key === key);
     if (!item) return;
     const next = Math.max(1, item.quantity + delta);
-    cartStore.updateQuantity(key, next);
+    return cartStore.updateQuantity(key, next);
   }
 
-  unsubscribe = cartStore.subscribe(render);
+  async function start() {
+    if (!(await ensureSession())) return;
+    unsubscribe = cartStore.subscribe(render);
+  }
+
+  start();
 
   window.addEventListener("beforeunload", () => {
     unsubscribe?.();

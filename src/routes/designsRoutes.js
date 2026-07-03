@@ -53,6 +53,81 @@ async function resolveCategoryId(category_id, { strict = false } = {}) {
   return otros.rows[0]?.id;
 }
 
+function normalizeTags(input) {
+  const raw = Array.isArray(input) ? input.join(",") : String(input || "");
+  const seen = new Set();
+  return raw
+    .split(",")
+    .map((tag) => tag.trim().replace(/\s+/g, " "))
+    .filter(Boolean)
+    .map((tag) => tag.slice(0, 32))
+    .filter((tag) => {
+      const key = tag.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 10);
+}
+
+function sameTags(a = [], b = []) {
+  return JSON.stringify(normalizeTags(a)) === JSON.stringify(normalizeTags(b));
+}
+
+async function getImageQualityReport(source) {
+  const metadata = await sharp(source).metadata();
+  const width = Number(metadata.width || 0);
+  const height = Number(metadata.height || 0);
+  const density = Number(metadata.density || 0);
+  const alerts = [];
+
+  if (width && height) {
+    if (Math.min(width, height) < 1200) {
+      alerts.push({
+        code: "low_pixel_size",
+        severity: "warning",
+        message: `La imagen mide ${width}x${height}px. Para impresiones nítidas recomendamos al menos 1200px en el lado más corto.`
+      });
+    } else if (Math.min(width, height) < 2000) {
+      alerts.push({
+        code: "medium_pixel_size",
+        severity: "info",
+        message: `La imagen mide ${width}x${height}px. Puede funcionar en productos chicos, pero 2000px o más mejora el resultado.`
+      });
+    }
+  }
+
+  if (density) {
+    if (density < 150) {
+      alerts.push({
+        code: "low_dpi",
+        severity: "warning",
+        message: `El archivo declara ${density} DPI. Para impresión recomendamos 150 DPI como mínimo y 300 DPI como ideal.`
+      });
+    } else if (density < 300) {
+      alerts.push({
+        code: "medium_dpi",
+        severity: "info",
+        message: `El archivo declara ${density} DPI. Es aceptable, aunque 300 DPI suele dar mejor definición.`
+      });
+    }
+  } else {
+    alerts.push({
+      code: "missing_dpi",
+      severity: "info",
+      message: "No encontramos DPI embebido en el archivo. Revisá que el original tenga buena resolución antes de publicarlo."
+    });
+  }
+
+  return {
+    width,
+    height,
+    density: density || null,
+    format: metadata.format || "",
+    alerts
+  };
+}
+
 async function removeFileIfExists(filePathAbs) {
   try {
     await fs.promises.unlink(filePathAbs);
@@ -122,9 +197,7 @@ router.get("/", async (req, res) => {
       }
     }
 
-    const filters = [
-      "(d.published = TRUE OR COALESCE(d.review_status, 'pending') = 'approved')"
-    ];
+    const filters = ["d.published = TRUE"];
     const params = [];
     const pushParam = (value) => {
       params.push(value);
@@ -137,6 +210,11 @@ router.get("/", async (req, res) => {
         `(
           LOWER(d.title) LIKE $${idx}
           OR LOWER(COALESCE(d.description, '')) LIKE $${idx}
+          OR EXISTS (
+            SELECT 1
+              FROM unnest(COALESCE(d.tags, '{}'::text[])) AS tag
+             WHERE LOWER(tag) LIKE $${idx}
+          )
           OR LOWER(COALESCE(NULLIF(TRIM(g.display_name), ''), u.username, u.name, '')) LIKE $${idx}
         )`
       );
@@ -209,6 +287,7 @@ router.get("/", async (req, res) => {
         d.id,
         d.title,
         d.description,
+        COALESCE(d.tags, '{}'::text[]) AS tags,
         d.image_url,
         COALESCE(d.thumbnail_url, d.image_url) AS thumbnail_url,
         d.created_at,
@@ -238,6 +317,7 @@ router.get("/", async (req, res) => {
         id: row.id,
         title: row.title,
         description: row.description || "",
+        tags: row.tags || [],
         image_url: row.image_url,
         thumbnail_url: row.thumbnail_url || row.image_url,
         created_at: row.created_at,
@@ -273,7 +353,7 @@ router.get("/featured", async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(parseInt(req.query.limit || "6", 10), 24));
     const { rows } = await pool.query(
-      `SELECT d.id, d.title, d.image_url, d.thumbnail_url, d.created_at,
+      `SELECT d.id, d.title, d.tags, d.image_url, d.thumbnail_url, d.created_at,
               COALESCE(u.username, u.name, 'Anónimo') AS designer_name,
               COUNT(l.user_id)::int AS likes,
               c.name AS category_name
@@ -324,10 +404,13 @@ router.post(
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
+      const quality = await getImageQualityReport(req.file.buffer);
       const previews = await previewProductMockups(req.file.buffer);
       res.json({
         mockup: previews[0]?.image ?? null,
-        mockups: previews
+        mockups: previews,
+        quality,
+        quality_alerts: quality.alerts
       });
     } catch (e) {
       console.error("POST /designs/mockup-preview", e);
@@ -348,7 +431,7 @@ router.get("/mine", requireAuth, async (req, res) => {
       `SELECT d.id, d.title, d.description, d.image_url, d.thumbnail_url,
               d.published,
               COALESCE(d.review_status, CASE WHEN d.published = TRUE THEN 'approved' ELSE 'pending' END) AS review_status,
-              d.created_at, COUNT(l.user_id)::int AS likes,
+              d.created_at, COALESCE(d.tags, '{}'::text[]) AS tags, COUNT(l.user_id)::int AS likes,
               c.name AS category_name, d.category_id
        FROM designs d
        JOIN designers g ON g.id = d.designer_id
@@ -383,7 +466,7 @@ router.get("/mine", requireAuth, async (req, res) => {
 // Crear diseño (queda pendiente hasta que un admin lo publique)
 router.post("/", requireAuth, upload.single("image"), async (req, res) => {
   try {
-    const { title, description, category_id: bodyCat } = req.body;
+    const { title, description, category_id: bodyCat, tags: bodyTags } = req.body;
     if (!title || title.trim().length < 3)
       return res.status(400).json({ error: "Título requerido (mín 3 caracteres)" });
     if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
@@ -401,12 +484,14 @@ router.post("/", requireAuth, upload.single("image"), async (req, res) => {
     const thumbUrl = `/img/uploads/thumbs/${thumbName}`;
 
     const category_id = await resolveCategoryId(bodyCat);
+    const tags = normalizeTags(bodyTags);
+    const quality = await getImageQualityReport(srcPath);
 
     const ins = await pool.query(
-      `INSERT INTO designs (designer_id, title, description, image_url, thumbnail_url, published, review_status, category_id)
-       VALUES ($1,$2,$3,$4,$5, FALSE, 'pending', $6)
-       RETURNING id, title, description, image_url, thumbnail_url, published, review_status, category_id, created_at`,
-      [designerId, title.trim(), (description || "").trim(), imageUrl, thumbUrl, category_id]
+      `INSERT INTO designs (designer_id, title, description, tags, image_url, thumbnail_url, published, review_status, category_id)
+       VALUES ($1,$2,$3,$4,$5,$6, FALSE, 'pending', $7)
+       RETURNING id, title, description, tags, image_url, thumbnail_url, published, review_status, category_id, created_at`,
+      [designerId, title.trim(), (description || "").trim(), tags, imageUrl, thumbUrl, category_id]
     );
     const design = ins.rows[0];
     const mockups = await generateProductMockups(design.id, srcPath);
@@ -418,6 +503,8 @@ router.post("/", requireAuth, upload.single("image"), async (req, res) => {
       ...design,
       mockups,
       mockup_remera: mockupRemera ? mockupRemera.image_url : null,
+      quality,
+      quality_alerts: quality.alerts,
       message: "Diseño recibido. Quedó en revisión del equipo antes de publicarse."
     });
   } catch (e) {
@@ -431,10 +518,10 @@ router.patch("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const { title, description, category_id } = req.body ?? {};
+    const { title, description, category_id, tags, published } = req.body ?? {};
 
     const currentQ = await pool.query(
-      `SELECT d.id, d.title, d.description, d.category_id,
+      `SELECT d.id, d.title, d.description, d.tags, d.category_id,
               COALESCE(d.review_status, CASE WHEN d.published = TRUE THEN 'approved' ELSE 'pending' END) AS review_status,
               d.published,
               d.image_url,
@@ -478,6 +565,14 @@ router.patch("/:id", requireAuth, async (req, res) => {
         contentChanged = true;
       }
     }
+    if (typeof tags !== "undefined") {
+      const cleanTags = normalizeTags(tags);
+      if (!sameTags(cleanTags, current.tags || [])) {
+        fields.push(`tags = $${idx++}`);
+        values.push(cleanTags);
+        contentChanged = true;
+      }
+    }
 
     let nextStatus = current.review_status || "pending";
     let nextPublished = current.published;
@@ -485,6 +580,16 @@ router.patch("/:id", requireAuth, async (req, res) => {
     if (contentChanged) {
       nextStatus = "pending";
       nextPublished = false;
+    }
+
+    if (!contentChanged && typeof published !== "undefined") {
+      const requestedPublished = !!published;
+      if (requestedPublished && nextStatus !== "approved") {
+        return res.status(400).json({
+          error: "El diseño debe estar aprobado por un administrador antes de publicarse."
+        });
+      }
+      nextPublished = requestedPublished;
     }
 
     if (nextStatus !== current.review_status) {
@@ -507,6 +612,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
         id,
         title: current.title,
         description: current.description,
+        tags: current.tags || [],
         category_id: current.category_id,
         review_status: current.review_status,
         published: current.published,
@@ -523,7 +629,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
       `UPDATE designs
          SET ${fields.join(", ")}
        WHERE id = $${idx}
-       RETURNING id, title, description, category_id, review_status, published, image_url, thumbnail_url, created_at`,
+       RETURNING id, title, description, tags, category_id, review_status, published, image_url, thumbnail_url, created_at`,
       values
     );
     const updatedDesign = updated.rows[0];
@@ -584,7 +690,7 @@ router.put("/:id/image", requireAuth, upload.single("image"), async (req, res) =
              published=FALSE,
              updated_at = NOW()
        WHERE id=$3
-       RETURNING id, image_url, thumbnail_url, review_status, published, title, description, category_id, created_at`,
+       RETURNING id, image_url, thumbnail_url, review_status, published, title, description, tags, category_id, created_at`,
       [imageUrl, thumbUrl, id]
     );
     const mockups = await generateProductMockups(id, srcPath);
@@ -646,7 +752,7 @@ router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const q = await pool.query(
-      `SELECT d.id, d.title, d.description, d.image_url, d.thumbnail_url,
+      `SELECT d.id, d.title, d.description, COALESCE(d.tags, '{}'::text[]) AS tags, d.image_url, d.thumbnail_url,
               d.created_at, COUNT(l.user_id)::int AS likes,
               COALESCE(u.username, u.name, 'Anónimo') AS designer_name,
               c.name AS category_name, d.category_id,

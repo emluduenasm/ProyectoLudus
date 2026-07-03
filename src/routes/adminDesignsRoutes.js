@@ -37,6 +37,23 @@ const onlyAdmin = [requireAuth, requireRole("admin")];
 
 async function removeFileIfExists(filePathAbs) { try { await fs.promises.unlink(filePathAbs); } catch {} }
 
+function normalizeTags(input) {
+  const raw = Array.isArray(input) ? input.join(",") : String(input || "");
+  const seen = new Set();
+  return raw
+    .split(",")
+    .map((tag) => tag.trim().replace(/\s+/g, " "))
+    .filter(Boolean)
+    .map((tag) => tag.slice(0, 32))
+    .filter((tag) => {
+      const key = tag.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 10);
+}
+
 async function resolveDesignAssetPath(row) {
   if (!row) return null;
   const sources = [row.image_url, row.thumbnail_url];
@@ -76,7 +93,17 @@ router.get("/", ...onlyAdmin, async (req, res) => {
       const p1 = add(`%${q}%`);
       const p2 = add(`%${q}%`);
       const p3 = add(`%${q}%`);
-      where.push(`(LOWER(d.title) LIKE ${p1} OR LOWER(u.username) LIKE ${p2} OR LOWER(u.name) LIKE ${p3})`);
+      const p4 = add(`%${q}%`);
+      where.push(`(
+        LOWER(d.title) LIKE ${p1}
+        OR LOWER(u.username) LIKE ${p2}
+        OR LOWER(u.name) LIKE ${p3}
+        OR EXISTS (
+          SELECT 1
+            FROM unnest(COALESCE(d.tags, '{}'::text[])) AS tag
+           WHERE LOWER(tag) LIKE ${p4}
+        )
+      )`);
     }
     if (category) {
       const p = add(category);
@@ -119,7 +146,7 @@ router.get("/", ...onlyAdmin, async (req, res) => {
     // Datos
     const rowsQ = await pool.query(
       `WITH base AS (
-         SELECT d.id, d.title, d.description, d.published,
+         SELECT d.id, d.title, d.description, COALESCE(d.tags, '{}'::text[]) AS tags, d.published,
                 COALESCE(d.review_status, CASE WHEN d.published = TRUE THEN 'approved' ELSE 'pending' END) AS review_status,
                 d.created_at,
                 d.image_url, d.thumbnail_url, d.category_id,
@@ -164,7 +191,7 @@ router.get("/", ...onlyAdmin, async (req, res) => {
 router.patch("/:id", ...onlyAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    let { title, description, published, category_id, review_status } = req.body;
+    let { title, description, tags, published, category_id, review_status } = req.body;
 
     const currentQ = await pool.query(
       `SELECT id, image_url, review_status, COALESCE(published, FALSE) AS published
@@ -197,6 +224,9 @@ router.patch("/:id", ...onlyAdmin, async (req, res) => {
     }
     if (typeof description === "string") {
       fields.push(`description = $${idx++}`); values.push(description.trim());
+    }
+    if (typeof tags !== "undefined") {
+      fields.push(`tags = $${idx++}`); values.push(normalizeTags(tags));
     }
     if (typeof category_id !== "undefined") {
       fields.push(`category_id = $${idx++}`); values.push(category_id);

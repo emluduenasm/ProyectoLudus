@@ -87,6 +87,46 @@ function categoryNameById(id) {
 }
 
 /* ------- En revisión ------- */
+function normalizeTags(value = "") {
+  const seen = new Set();
+  return String(value)
+    .split(",")
+    .map((tag) => tag.trim().replace(/\s+/g, " "))
+    .filter(Boolean)
+    .map((tag) => tag.slice(0, 32))
+    .filter((tag) => {
+      const key = tag.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 10);
+}
+
+function formatTags(tags = []) {
+  const list = Array.isArray(tags) ? tags : normalizeTags(tags);
+  if (!list.length) return "";
+  return `<div class="tag-list">${list.map((tag) => `<span class="tag-chip">${esc(tag)}</span>`).join("")}</div>`;
+}
+
+function renderStatusPill(design) {
+  if (design.review_status === "approved" && design.published) {
+    return `<span class="status-pill published"><i class="fa-solid fa-circle-check"></i> Publicado</span>`;
+  }
+  if (design.review_status === "approved") {
+    return `<span class="status-pill approved-hidden"><i class="fa-solid fa-eye-slash"></i> Aprobado · oculto</span>`;
+  }
+  if (design.review_status === "rejected") {
+    return `<span class="status-pill rejected"><i class="fa-solid fa-circle-xmark"></i> Rechazado</span>`;
+  }
+  return `<span class="status-pill pending"><i class="fa-solid fa-hourglass-half"></i> En revisión</span>`;
+}
+
+function nextReviewStatusForHidden(currentStatus) {
+  if (currentStatus === "approved" || currentStatus === "rejected") return currentStatus;
+  return "pending";
+}
+
 async function loadReviewQueue() {
   if (!el.reviewSection) return;
   try {
@@ -141,6 +181,7 @@ function renderReviewQueue(items) {
           · Likes: ${d.likes ?? 0}
         </div>
         ${d.designer_name ? `<div class="review-meta" style="margin-top:.2rem">Diseñador: ${d.designer_name}</div>` : ""}
+        ${formatTags(d.tags)}
         ${d.description ? `<p class="muted-sm" style="margin-top:.4rem">${d.description}</p>` : ""}
       </div>
       <div class="review-actions">
@@ -191,7 +232,7 @@ async function loadList() {
   el.next.disabled = data.page * state.limit >= data.total;
 
   el.rows.innerHTML = data.items.map(d => `
-    <tr data-id="${d.id}" data-img="${d.image_url}" data-cat="${d.category_id}" data-status="${d.review_status || (d.published ? 'approved' : 'pending')}" data-desc="${escAttr(d.description)}">
+    <tr data-id="${d.id}" data-img="${d.image_url}" data-cat="${d.category_id}" data-tags="${escAttr((d.tags || []).join(', '))}" data-status="${d.review_status || (d.published ? 'approved' : 'pending')}" data-desc="${escAttr(d.description)}">
       <td>
         <a class="link" href="/design.html?id=${encodeURIComponent(d.id)}" style="display:inline-flex">
           <img class="thumb" src="${esc(d.thumbnail_url || d.image_url)}" alt="${esc(d.title)}"/>
@@ -204,6 +245,7 @@ async function loadList() {
           </a>
         </div>
         <div class="muted-sm">${new Date(d.created_at).toLocaleDateString("es-AR")}</div>
+        ${formatTags(d.tags)}
       </td>
       <td>
         <div><strong>${esc(d.designer_username || d.designer_name || "—")}</strong></div>
@@ -219,13 +261,7 @@ async function loadList() {
       <td>${d.likes ?? 0}</td>
       <td>
         <div style="display:flex;flex-direction:column;gap:.35rem;align-items:flex-start">
-          ${
-            d.review_status === "approved"
-              ? `<span class="status-pill published"><i class="fa-solid fa-circle-check"></i> Publicado</span>`
-              : d.review_status === "rejected"
-                ? `<span class="status-pill rejected"><i class="fa-solid fa-circle-xmark"></i> Rechazado</span>`
-                : `<span class="status-pill pending"><i class="fa-solid fa-hourglass-half"></i> En revisión</span>`
-          }
+          ${renderStatusPill(d)}
           ${d.review_status === "rejected"
             ? ""
             : `<label title="${d.published ? 'Publicado' : 'No publicado'}">
@@ -262,7 +298,11 @@ async function loadList() {
     chk.addEventListener("change", async () => {
       chk.disabled = true;
       try {
-        await patchDesign(id, { published: chk.checked, review_status: chk.checked ? 'approved' : 'pending' });
+        const currentStatus = tr.dataset.status || "pending";
+        await patchDesign(id, {
+          published: chk.checked,
+          review_status: chk.checked ? "approved" : nextReviewStatusForHidden(currentStatus)
+        });
         await loadList();
       } catch(e){
         console.error(e);
@@ -331,6 +371,7 @@ function setForm(design) {
   form.id.value = design.id;
   form.title.value = design.title || "";
   form.description.value = design.description || "";
+  form.tags.value = design.tags || "";
   form.published.checked = !!design.published;
   form.dataset.status = design.review_status || "pending";
   fillCategorySelect(design.category_id || design.cat);
@@ -343,6 +384,7 @@ async function openEdit(id, tr) {
     id,
     title: tr.querySelector("strong").textContent.trim(),
     description: tr.dataset.desc ? tr.dataset.desc : "",
+    tags: tr.dataset.tags || "",
     published: toggle ? toggle.checked : status === "approved",
     category_id: tr.dataset.cat,
     cat: tr.dataset.cat,
@@ -359,9 +401,10 @@ form.addEventListener("submit", async (e) => {
   const payload = {
     title: form.title.value.trim(),
     description: form.description.value.trim(),
+    tags: normalizeTags(form.tags.value).join(", "),
     published: form.published.checked,
     category_id: selCat.value,
-    review_status: form.published.checked ? "approved" : (form.dataset.status === "rejected" ? "rejected" : "pending")
+    review_status: form.published.checked ? "approved" : nextReviewStatusForHidden(form.dataset.status)
   };
   try {
     await patchDesign(id, payload);

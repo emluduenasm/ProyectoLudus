@@ -31,6 +31,9 @@
     .btn-danger{background:#dc2626;color:#fff}
     .btn-danger:hover{filter:brightness(.95)}
     .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+    .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem}
+    .edit-section{margin-top:1rem;padding-top:.75rem;border-top:1px solid #e2e8f0}
+    .edit-section h4{margin:0 0 .6rem;color:#334155}
     dialog .input { width: 100%; }
     dialog label { display:block; }
     .designs-published{color:#16a34a;font-weight:600}
@@ -127,7 +130,7 @@
 
   <!-- Modal: Editar -->
 <dialog id="modal">
-  <form id="formEdit" method="dialog" class="card" style="padding:1rem;min-width:min(620px,95vw)">
+  <form id="formEdit" method="dialog" class="card" style="padding:1rem;min-width:min(860px,95vw);max-height:90vh;overflow:auto">
     <h3>Editar usuario</h3>
     <input type="hidden" name="id"/>
 
@@ -161,6 +164,104 @@
         </select>
       </label>
     </div>
+
+    <div class="grid-2">
+        <label>Preferencia de uso
+          <select class="input" name="use_preference" required>
+            <option value="buy">Comprar</option>
+          <option value="upload">Subir diseños</option>
+          </select>
+        </label>
+      <label>Estado
+        <select class="input" name="banned">
+          <option value="false">Activo</option>
+          <option value="true">Baneado</option>
+        </select>
+      </label>
+    </div>
+
+    <label id="banReasonWrap">Motivo de baneo
+      <input class="input" type="text" name="banned_reason" maxlength="240" />
+    </label>
+
+    <section class="edit-section">
+      <h4>Direccion de contacto, facturacion y envio</h4>
+      <div class="grid-2">
+        <label>Telefono / WhatsApp
+          <input class="input" type="tel" name="phone" inputmode="numeric" maxlength="14" />
+          <span class="muted-sm">10 digitos, con codigo de area, sin 0 ni 15.</span>
+        </label>
+        <label>Pais
+          <input class="input" type="text" name="country" maxlength="80" />
+        </label>
+      </div>
+      <div class="grid-2">
+        <label>Provincia
+          <select class="input" name="province" required>
+            <option value="">Selecciona una provincia</option>
+            <option>Buenos Aires</option>
+            <option>Catamarca</option>
+            <option>Chaco</option>
+            <option>Chubut</option>
+            <option>Ciudad Autonoma de Buenos Aires</option>
+            <option>Cordoba</option>
+            <option>Corrientes</option>
+            <option>Entre Rios</option>
+            <option>Formosa</option>
+            <option>Jujuy</option>
+            <option>La Pampa</option>
+            <option>La Rioja</option>
+            <option>Mendoza</option>
+            <option>Misiones</option>
+            <option>Neuquen</option>
+            <option>Rio Negro</option>
+            <option>Salta</option>
+            <option>San Juan</option>
+            <option>San Luis</option>
+            <option>Santa Cruz</option>
+            <option>Santa Fe</option>
+            <option>Santiago del Estero</option>
+            <option>Tierra del Fuego</option>
+            <option>Tucuman</option>
+          </select>
+        </label>
+        <label>Localidad / Ciudad
+          <input class="input" type="text" name="city" maxlength="80" />
+        </label>
+      </div>
+      <div class="grid-3">
+        <label>Calle
+          <input class="input" type="text" name="street" maxlength="120" />
+        </label>
+        <label>Altura / Numero
+          <input class="input" type="text" name="street_number" maxlength="20" />
+        </label>
+        <label>Codigo postal
+          <input class="input" type="text" name="postal_code" maxlength="8" />
+          <span class="muted-sm">4 numeros o formato A1234ABC.</span>
+        </label>
+      </div>
+      <div class="grid-2">
+        <label>Piso / Depto / Casa
+          <input class="input" type="text" name="floor_apartment" maxlength="80" />
+        </label>
+        <label>Referencias
+          <textarea class="input" name="notes" rows="2" maxlength="240"></textarea>
+        </label>
+      </div>
+    </section>
+
+    <section class="edit-section">
+      <h4>Datos de cobro del diseñador</h4>
+      <div class="grid-2">
+        <label>Alias bancario / billetera
+          <input class="input" type="text" name="payout_alias" maxlength="30" />
+        </label>
+        <label>CBU / CVU
+          <input class="input" type="text" name="payout_cbu" inputmode="numeric" maxlength="22" />
+        </label>
+      </div>
+    </section>
 
     <div id="msg" class="muted-sm" style="margin-top:.5rem"></div>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">

@@ -27,6 +27,19 @@
   });
   const originalLoadMoreMarkup = loadMoreBtn ? loadMoreBtn.innerHTML : "";
 
+  const formatTags = (tags = []) => {
+    if (!Array.isArray(tags) || !tags.length) return null;
+    const wrap = document.createElement("div");
+    wrap.className = "tag-list";
+    tags.forEach((tag) => {
+      const chip = document.createElement("span");
+      chip.className = "tag-chip";
+      chip.textContent = tag;
+      wrap.appendChild(chip);
+    });
+    return wrap;
+  };
+
   const getFilters = () => {
     const data = new FormData(form);
     const normalizeDesigner = (value) => {
@@ -107,6 +120,8 @@
       badge.textContent = design.category.name;
       body.appendChild(badge);
     }
+    const tags = formatTags(design.tags);
+    if (tags) body.appendChild(tags);
 
     body.appendChild(title);
     body.appendChild(designer);
