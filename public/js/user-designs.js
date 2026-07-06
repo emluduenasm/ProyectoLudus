@@ -26,6 +26,53 @@
   const state = { items: [], categories: [] };
   const imageInput = el.form?.querySelector('input[name="image"]');
 
+  function hasDesignerTools(profile = {}) {
+    const user = profile.user || {};
+    const designer = profile.designer || {};
+    return (
+      user.role === "designer" ||
+      user.use_preference === "upload" ||
+      Number(designer.stats?.designs || 0) > 0
+    );
+  }
+
+  function hasPayoutData(profile = {}) {
+    const designer = profile.designer || {};
+    return Boolean(String(designer.payout_alias || "").trim() || String(designer.payout_cbu || "").trim());
+  }
+
+  function renderPayoutBanner(profile) {
+    const main = document.querySelector("main");
+    if (!main || !hasDesignerTools(profile) || hasPayoutData(profile)) return;
+    if (main.querySelector("#payoutAlert")) return;
+    const nav = main.querySelector(".admin-subnav");
+    const html = `
+      <section id="payoutAlert" class="card" style="padding:1rem;margin:1rem 0;border-left:4px solid #f59e0b">
+        <div style="display:flex;gap:1rem;align-items:center;justify-content:space-between;flex-wrap:wrap">
+          <div>
+            <strong>Datos de cobro pendientes</strong>
+            <p class="muted-sm" style="margin:.25rem 0 0">Para poder cobrar comisiones por tus dise&ntilde;os, carg&aacute; un alias o CBU/CVU.</p>
+          </div>
+          <a class="btn btn-primary" href="/user-profile.html#payoutSection"><i class="fa-solid fa-wallet"></i> Completar datos de cobro</a>
+        </div>
+      </section>`;
+    if (nav) nav.insertAdjacentHTML("afterend", html);
+    else main.insertAdjacentHTML("afterbegin", html);
+  }
+
+  async function loadDesignerProfile() {
+    try {
+      const res = await fetch(api("/designers/me"), {
+        headers: { ...authHeaders(), Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
   function showMsg(text, type = "muted-sm") {
     if (!el.msg) return;
     el.msg.textContent = text || "";
@@ -413,6 +460,8 @@
   (async () => {
     const me = await guardUser();
     if (!me) return;
+    const profile = await loadDesignerProfile();
+    if (profile) renderPayoutBanner(profile);
     await loadCategories();
     await loadDesigns();
   })();

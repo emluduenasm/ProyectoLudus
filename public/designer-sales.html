@@ -21,8 +21,8 @@
     .filters label{display:flex;flex-direction:column;gap:.25rem;font-size:.85rem;color:#475569}
     .filters select,.filters input{min-width:140px}
     .filters button{height:42px}
-    .summary{margin-bottom:1rem}
-    .summary-card{background:#0b25370a;border-radius:14px;padding:1rem 1.25rem;display:flex;flex-direction:column;gap:.2rem;max-width:260px}
+    .summary{margin-bottom:1rem;display:flex;gap:.75rem;flex-wrap:wrap}
+    .summary-card{background:#0b25370a;border-radius:14px;padding:1rem 1.25rem;display:flex;flex-direction:column;gap:.2rem;max-width:260px;min-width:220px}
     .summary-card strong{font-size:1.4rem;color:#0f172a}
     .status-pill{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .7rem;border-radius:999px;font-size:.78rem;font-weight:600}
     .status-pill.pending{background:#fef3c7;color:#92400e}
@@ -48,6 +48,7 @@
       <a href="/user-profile.html" class="tab"><i class="fa-solid fa-user-gear"></i> Mi perfil</a>
       <a href="/user-orders.html" class="tab"><i class="fa-solid fa-bag-shopping"></i> Mis compras</a>
       <a href="/upload.html" class="tab"><i class="fa-solid fa-cloud-arrow-up"></i> Subir dise&ntilde;o</a>
+      <a href="/designer-commissions.html" class="tab"><i class="fa-solid fa-coins"></i> Comisiones</a>
     </nav>
 
     <div class="toolbar">
@@ -82,6 +83,10 @@
         <p class="muted-sm" style="margin:0">Total vendido</p>
         <strong id="totalAmount">$ 0,00</strong>
       </div>
+      <div class="summary-card">
+        <p class="muted-sm" style="margin:0">Comisiones</p>
+        <strong id="totalCommission">$ 0,00</strong>
+      </div>
     </div>
 
     <div class="table-wrap">
@@ -92,13 +97,14 @@
             <th>Pedido</th>
             <th>Producto / Diseño</th>
             <th>Cantidad</th>
+            <th>Base producto / Comisión</th>
             <th>Estado</th>
             <th>Monto</th>
             <th>Comprador</th>
           </tr>
         </thead>
         <tbody id="rows">
-          <tr><td colspan="6">Cargando…</td></tr>
+          <tr><td colspan="8">Cargando…</td></tr>
         </tbody>
       </table>
     </div>

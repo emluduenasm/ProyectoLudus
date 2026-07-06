@@ -411,6 +411,50 @@ router.get("/me", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/me/commissions", requireAuth, async (req, res) => {
+  try {
+    const profile = await buildProfile(req.user.id);
+    if (!profile) return res.status(404).json({ error: "Perfil no encontrado" });
+
+    const canSeeCommissions =
+      profile.user?.role === "designer" ||
+      profile.user?.use_preference === "upload" ||
+      Number(profile.designer?.stats?.designs || 0) > 0;
+
+    if (!canSeeCommissions) {
+      return res.json({ items: [] });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id,
+              name,
+              price,
+              designer_base_price,
+              designer_commission_type,
+              designer_commission_value,
+              designer_commission_amount
+         FROM products
+        WHERE published = TRUE
+        ORDER BY name ASC`
+    );
+
+    res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        price: Number(row.price ?? 0),
+        base_price: Number(row.designer_base_price ?? 0),
+        commission_type: row.designer_commission_type || "percent",
+        commission_value: Number(row.designer_commission_value ?? 0),
+        commission_amount: Number(row.designer_commission_amount ?? 0)
+      }))
+    });
+  } catch (e) {
+    console.error("GET /designers/me/commissions", e);
+    res.status(500).json({ error: "No se pudieron obtener las comisiones" });
+  }
+});
+
 router.get("/profile/:username", async (req, res) => {
   try {
     const username = (req.params.username || "").trim().toLowerCase();
@@ -1117,6 +1161,10 @@ router.get("/me/sales", requireAuth, async (req, res) => {
          oi.product_name,
          oi.quantity,
          oi.unit_price,
+         oi.designer_base_price,
+         oi.designer_commission_type,
+         oi.designer_commission_value,
+         oi.designer_commission_amount,
          o.id AS order_id,
          o.order_number,
          o.status AS order_status,
@@ -1144,7 +1192,12 @@ router.get("/me/sales", requireAuth, async (req, res) => {
       product_name: row.product_name,
       quantity: row.quantity,
       unit_price: Number(row.unit_price ?? 0),
+      designer_base_price: Number(row.designer_base_price ?? 0),
+      designer_commission_type: row.designer_commission_type || "percent",
+      designer_commission_value: Number(row.designer_commission_value ?? 0),
+      designer_commission_amount: Number(row.designer_commission_amount ?? 0),
       line_total: Number(row.unit_price ?? 0) * row.quantity,
+      commission_total: Number(row.designer_commission_amount ?? 0) * row.quantity,
       status: row.order_status || "pending",
       buyer: {
         id: row.buyer_id,
@@ -1161,6 +1214,14 @@ router.get("/me/sales", requireAuth, async (req, res) => {
       params
     );
     const totalAmount = Number(totalAmountQ.rows[0]?.total_amount ?? 0);
+    const totalCommissionQ = await pool.query(
+      `SELECT COALESCE(SUM(oi.designer_commission_amount * oi.quantity), 0)::numeric AS total_commission
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+        ${whereSql}`,
+      params
+    );
+    const totalCommission = Number(totalCommissionQ.rows[0]?.total_commission ?? 0);
 
     const productsQ = await pool.query(
       `SELECT DISTINCT oi.product_id, oi.product_name
@@ -1176,7 +1237,7 @@ router.get("/me/sales", requireAuth, async (req, res) => {
         name: row.product_name || "Producto"
       }));
 
-    res.json({ page, limit, total, total_amount: totalAmount, items, products });
+    res.json({ page, limit, total, total_amount: totalAmount, total_commission: totalCommission, items, products });
   } catch (err) {
     console.error("GET /designers/me/sales", err);
     res.status(500).json({ error: "No se pudo obtener las ventas." });

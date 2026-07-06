@@ -61,6 +61,15 @@
     }
   }
 
+  function scrollToPayoutIfRequested() {
+    if (location.hash !== "#payoutSection" || !payoutSection || !payoutVisible) return;
+    setTimeout(() => {
+      payoutSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      const firstInput = payoutSection.querySelector("input");
+      firstInput?.focus?.({ preventScroll: true });
+    }, 80);
+  }
+
   function applyProfile(data) {
     if (!data) return;
     const designer = data.designer || {};
@@ -89,6 +98,7 @@
     }
 
     syncPayoutVisibility(user, designer);
+    scrollToPayoutIfRequested();
 
     currentAvatar = designer.avatar_url || currentAvatar;
     if (avatarPreview) {
@@ -102,6 +112,7 @@
     if (statLikes) {
       statLikes.textContent = designer.stats?.likes ?? 0;
     }
+
   }
 
   async function loadProfile() {

@@ -3,6 +3,7 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { ensureOrderSchema } from "../lib/orderService.js";
+import { pricingSnapshot } from "../lib/pricingService.js";
 
 const router = Router();
 
@@ -70,7 +71,7 @@ router.post("/", requireAuth, async (req, res) => {
         [designIds]
       );
       const productsQ = await client.query(
-        `SELECT id, name, price, published
+        `SELECT id, name, price, product_cost, fixed_costs, site_profit_percent, designer_commission_type, designer_commission_value, designer_base_price, designer_commission_amount, published
            FROM products
           WHERE id = ANY($1::uuid[])`,
         [productIds]
@@ -121,7 +122,8 @@ router.post("/", requireAuth, async (req, res) => {
             .status(400)
             .json({ error: "Alguno de los productos no está disponible." });
         }
-        const unitPrice = Number(product.price ?? 0);
+        const pricing = pricingSnapshot(product);
+        const unitPrice = Number(pricing.price ?? product.price ?? 0);
         lines.push({
           design_id: entry.design_id,
           design_title: design.title,
@@ -129,7 +131,12 @@ router.post("/", requireAuth, async (req, res) => {
           product_id: entry.product_id,
           product_name: product.name,
           quantity: entry.quantity,
-          unit_price: unitPrice
+          unit_price: unitPrice,
+          designer_base_price: pricing.designer_base_price,
+          designer_commission_type: pricing.designer_commission_type,
+          designer_commission_value: pricing.designer_commission_value,
+          designer_commission_amount: pricing.designer_commission_amount,
+          pricing_snapshot: pricing
         });
       }
 
@@ -189,12 +196,17 @@ router.post("/", requireAuth, async (req, res) => {
           line.design_title,
           line.product_name,
           line.quantity,
-          line.unit_price
+          line.unit_price,
+          line.designer_base_price,
+          line.designer_commission_type,
+          line.designer_commission_value,
+          line.designer_commission_amount,
+          line.pricing_snapshot
         );
         insertValues.push(
-          `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7})`
+          `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, $${paramIndex + 12})`
         );
-        paramIndex += 8;
+        paramIndex += 13;
       }
       await client.query(
         `INSERT INTO order_items (
@@ -205,7 +217,12 @@ router.post("/", requireAuth, async (req, res) => {
            design_title,
            product_name,
            quantity,
-           unit_price
+           unit_price,
+           designer_base_price,
+           designer_commission_type,
+           designer_commission_value,
+           designer_commission_amount,
+           pricing_snapshot
          ) VALUES ${insertValues.join(", ")}`,
         params
       );
@@ -221,7 +238,11 @@ router.post("/", requireAuth, async (req, res) => {
             product_id: line.product_id,
             product_name: line.product_name,
             quantity: line.quantity,
-            unit_price: line.unit_price
+            unit_price: line.unit_price,
+            designer_base_price: line.designer_base_price,
+            designer_commission_type: line.designer_commission_type,
+            designer_commission_value: line.designer_commission_value,
+            designer_commission_amount: line.designer_commission_amount
           }))
         }
       });

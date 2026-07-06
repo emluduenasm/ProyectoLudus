@@ -81,6 +81,13 @@ const bootstrap = async () => {
       name TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
       price NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (price >= 0),
+      product_cost NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (product_cost >= 0),
+      fixed_costs NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (fixed_costs >= 0),
+      site_profit_percent NUMERIC(7,2) NOT NULL DEFAULT 0 CHECK (site_profit_percent >= 0),
+      designer_commission_type TEXT NOT NULL DEFAULT 'percent',
+      designer_commission_value NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (designer_commission_value >= 0),
+      designer_base_price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (designer_base_price >= 0),
+      designer_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (designer_commission_amount >= 0),
       stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
       image_url TEXT,
       published BOOLEAN NOT NULL DEFAULT false,
@@ -100,6 +107,49 @@ const bootstrap = async () => {
   await pool.query(`
     ALTER TABLE products
       ADD COLUMN IF NOT EXISTS mockup_config JSONB;
+  `);
+  await pool.query(`
+    ALTER TABLE products
+      ADD COLUMN IF NOT EXISTS product_cost NUMERIC(12,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS fixed_costs NUMERIC(12,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS site_profit_percent NUMERIC(7,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS designer_commission_type TEXT NOT NULL DEFAULT 'percent',
+      ADD COLUMN IF NOT EXISTS designer_commission_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS designer_base_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS designer_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+  `);
+  await pool.query(`
+    UPDATE products
+       SET product_cost = COALESCE(NULLIF(product_cost, 0), price, 0),
+           designer_base_price = COALESCE(NULLIF(designer_base_price, 0), price, 0)
+     WHERE COALESCE(product_cost, 0) = 0
+       AND COALESCE(fixed_costs, 0) = 0
+       AND COALESCE(site_profit_percent, 0) = 0
+       AND COALESCE(designer_commission_value, 0) = 0;
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS product_cost_components (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS product_cost_components_product_idx
+      ON product_cost_components(product_id, sort_order);
+  `);
+  await pool.query(`
+    INSERT INTO product_cost_components (product_id, name, amount, sort_order)
+    SELECT p.id, 'Costos fijos', p.fixed_costs, 0
+      FROM products p
+     WHERE COALESCE(p.fixed_costs, 0) > 0
+       AND NOT EXISTS (
+         SELECT 1
+           FROM product_cost_components c
+          WHERE c.product_id = p.id
+       );
   `);
   await pool.query(`
     ALTER TABLE products
@@ -246,6 +296,11 @@ const bootstrap = async () => {
       product_name TEXT NOT NULL,
       quantity INTEGER NOT NULL CHECK (quantity > 0),
       unit_price NUMERIC(12,2) NOT NULL CHECK (unit_price >= 0),
+      designer_base_price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (designer_base_price >= 0),
+      designer_commission_type TEXT NOT NULL DEFAULT 'percent',
+      designer_commission_value NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (designer_commission_value >= 0),
+      designer_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (designer_commission_amount >= 0),
+      pricing_snapshot JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS order_items_order_id_idx ON order_items(order_id);

@@ -47,8 +47,26 @@ export async function ensureOrderSchema() {
       product_name TEXT NOT NULL,
       quantity INTEGER NOT NULL CHECK (quantity > 0),
       unit_price NUMERIC(12,2) NOT NULL CHECK (unit_price >= 0),
+      designer_base_price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (designer_base_price >= 0),
+      designer_commission_type TEXT NOT NULL DEFAULT 'percent',
+      designer_commission_value NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (designer_commission_value >= 0),
+      designer_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (designer_commission_amount >= 0),
+      pricing_snapshot JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
+  `);
+  await pool.query(`
+    ALTER TABLE order_items
+      ADD COLUMN IF NOT EXISTS designer_base_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS designer_commission_type TEXT NOT NULL DEFAULT 'percent',
+      ADD COLUMN IF NOT EXISTS designer_commission_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS designer_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS pricing_snapshot JSONB
+  `);
+  await pool.query(`
+    UPDATE order_items
+       SET designer_base_price = COALESCE(NULLIF(designer_base_price, 0), unit_price, 0)
+     WHERE COALESCE(designer_base_price, 0) = 0
   `);
   await pool.query(
     `CREATE INDEX IF NOT EXISTS order_items_order_id_idx ON order_items(order_id)`

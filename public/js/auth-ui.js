@@ -358,7 +358,8 @@
       "/user-orders.html",
       "/upload.html",
       "/user-designs.html",
-      "/designer-sales.html"
+      "/designer-sales.html",
+      "/designer-commissions.html"
     ]);
     const panelNavs = [...navs].filter((nav) =>
       [...nav.querySelectorAll("a[href]")].some((a) => userPaths.has(new URL(a.href, location.origin).pathname))
@@ -375,7 +376,7 @@
     const hasDesignerTools = prefersDesigner || designCount > 0;
     const hasPurchases = orderCount > 0;
     const here = location.pathname.replace(/\/+$/, "");
-    if (!hasDesignerTools && (here === "/user-designs.html" || here === "/designer-sales.html")) {
+    if (!hasDesignerTools && (here === "/user-designs.html" || here === "/designer-sales.html" || here === "/designer-commissions.html")) {
       location.replace("/user-profile.html");
       return;
     }
@@ -389,19 +390,20 @@
     const uploadLink = { href: "/upload.html", icon: "fa-cloud-arrow-up", text: "Subir dise&ntilde;o" };
     const designsLink = { href: "/user-designs.html", icon: "fa-rectangle-list", text: "Mis dise&ntilde;os" };
     const salesLink = { href: "/designer-sales.html", icon: "fa-chart-line", text: "Mis ventas" };
+    const commissionsLink = { href: "/designer-commissions.html", icon: "fa-coins", text: "Comisiones" };
 
     const links = prefersDesigner
       ? [
           profileLink,
           uploadLink,
-          ...(hasDesignerTools ? [designsLink, salesLink] : []),
+          ...(hasDesignerTools ? [designsLink, salesLink, commissionsLink] : []),
           ...(hasPurchases ? [ordersLink] : [])
         ]
       : [
           profileLink,
           ordersLink,
           uploadLink,
-          ...(hasDesignerTools ? [designsLink, salesLink] : [])
+          ...(hasDesignerTools ? [designsLink, salesLink, commissionsLink] : [])
         ];
 
     panelNavs.forEach((nav) => {

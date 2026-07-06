@@ -3,26 +3,24 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Mis compras · Ludus Stamps</title>
+  <title>Comisiones &middot; Ludus Stamps</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <link rel="stylesheet" href="/styles.css"/>
   <style>
-    .orders-wrap{max-width:1100px;margin:2rem auto;padding:1rem}
-    .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;gap:.75rem;flex-wrap:wrap}
+    .commissions-wrap{max-width:1100px;margin:2rem auto;padding:1rem}
+    .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:.75rem;flex-wrap:wrap}
     .table-wrap{overflow-x:auto}
     table{width:100%;border-collapse:separate;border-spacing:0 .5rem}
-    td,th{padding:.6rem .8rem;background:#fff;vertical-align:top}
+    td,th{padding:.75rem .85rem;background:#fff;vertical-align:top}
     th{color:#334155;text-align:left}
     td:first-child,th:first-child{border-top-left-radius:10px;border-bottom-left-radius:10px}
     td:last-child,th:last-child{border-top-right-radius:10px;border-bottom-right-radius:10px}
     .muted-sm{color:#64748b;font-size:.85rem}
-    .status-pill{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .65rem;border-radius:999px;font-size:.78rem;font-weight:600}
-    .status-pill.pending{background:#fef3c7;color:#92400e}
-    .status-pill.completed{background:#dcfce7;color:#166534}
-    .status-pill.cancelled{background:#fee2e2;color:#991b1b}
-    .order-items{margin-top:.5rem;color:#475569;font-size:.9rem}
-    .order-items li{margin-bottom:.2rem}
-    .filters{display:flex;gap:.75rem;align-items:center;margin-bottom:.75rem}
+    .product-name{font-weight:700;color:#0f172a}
+    .money{font-weight:700;color:#0f172a;white-space:nowrap}
+    .summary{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem}
+    .summary-card{background:#0b25370a;border-radius:14px;padding:1rem 1.25rem;display:flex;flex-direction:column;gap:.2rem;min-width:220px}
+    .summary-card strong{font-size:1.35rem;color:#0f172a}
   </style>
 </head>
 <body>
@@ -31,15 +29,15 @@
       <a class="brand" href="/"><img src="/img/logo.png" alt="Logo"/></a>
       <nav class="menu">
         <a href="/"><i class="fa-solid fa-house"></i> Inicio</a>
-        <a href="/designs.html"><i class="fa-solid fa-palette"></i> Diseños</a>
+        <a href="/designs.html"><i class="fa-solid fa-palette"></i> Dise&ntilde;os</a>
       </nav>
     </div>
   </header>
 
-  <main class="orders-wrap">
-    <h1>Mis compras</h1>
+  <main class="commissions-wrap">
+    <h1>Comisiones</h1>
 
-    <nav class="admin-subnav" style="margin-bottom:1rem">
+    <nav class="admin-subnav">
       <a href="/user-profile.html" class="tab"><i class="fa-solid fa-user-gear"></i> Mi perfil</a>
       <a href="/user-orders.html" class="tab"><i class="fa-solid fa-bag-shopping"></i> Mis compras</a>
       <a href="/upload.html" class="tab"><i class="fa-solid fa-cloud-arrow-up"></i> Subir dise&ntilde;o</a>
@@ -47,52 +45,42 @@
     </nav>
 
     <div class="toolbar">
-      <p class="muted-sm">Historial de pedidos realizados en Ludus.</p>
+      <p class="muted-sm">Valores vigentes de comisi&oacute;n para dise&ntilde;adores por cada producto publicado.</p>
       <span id="resultInfo" class="muted-sm"></span>
     </div>
 
-    <div class="filters">
-      <label class="muted-sm">Por página
-        <select id="fLimit" class="input">
-          <option value="10">10</option>
-          <option value="20">20</option>
-          <option value="30">30</option>
-        </select>
-      </label>
-      <div class="muted-sm" id="pageInfo"></div>
+    <div class="summary">
+      <div class="summary-card">
+        <p class="muted-sm" style="margin:0">Productos publicados</p>
+        <strong id="totalProducts">0</strong>
+      </div>
     </div>
 
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Número</th>
-            <th>Fecha</th>
-            <th>Estado</th>
-            <th>Items</th>
-            <th>Total</th>
+            <th>Producto</th>
+            <th>Base producto</th>
+            <th>Comisi&oacute;n</th>
+            <th>Precio final</th>
           </tr>
         </thead>
         <tbody id="rows">
-          <tr><td colspan="5">Cargando…</td></tr>
+          <tr><td colspan="4">Cargando...</td></tr>
         </tbody>
       </table>
-    </div>
-
-    <div class="pagination">
-      <button id="prev" class="btn">←</button>
-      <button id="next" class="btn">→</button>
     </div>
   </main>
 
   <footer class="site-footer">
     <div class="container footer-grid">
-      <p>© 2025 Ludus Stamps. Todos los derechos reservados.</p>
+      <p>&copy; 2025 Ludus Stamps. Todos los derechos reservados.</p>
       <p><a class="link" href="#contacto">Contacto</a></p>
     </div>
   </footer>
 
   <script src="/js/auth-ui.js" defer></script>
-  <script src="/js/user-orders.js" defer></script>
+  <script src="/js/designer-commissions.js" defer></script>
 </body>
 </html>

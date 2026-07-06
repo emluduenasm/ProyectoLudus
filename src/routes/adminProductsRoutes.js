@@ -6,6 +6,12 @@ import multer from "multer";
 import { pool } from "../db.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { generateProductMockups } from "../lib/mockupService.js";
+import {
+  calculateProductPricing,
+  normalizeCommissionType,
+  parseMoney,
+  parsePercent
+} from "../lib/pricingService.js";
 
 const router = Router();
 const onlyAdmin = [requireAuth, requireRole("admin")];
@@ -142,6 +148,21 @@ const mapRow = (row) => ({
   name: row.name,
   description: row.description || "",
   price: row.price !== null ? Number(row.price) : 0,
+  product_cost: row.product_cost !== null ? Number(row.product_cost) : 0,
+  fixed_costs: row.fixed_costs !== null ? Number(row.fixed_costs) : 0,
+  site_profit_percent: row.site_profit_percent !== null ? Number(row.site_profit_percent) : 0,
+  designer_commission_type: row.designer_commission_type || "percent",
+  designer_commission_value: row.designer_commission_value !== null ? Number(row.designer_commission_value) : 0,
+  designer_base_price: row.designer_base_price !== null ? Number(row.designer_base_price) : 0,
+  designer_commission_amount: row.designer_commission_amount !== null ? Number(row.designer_commission_amount) : 0,
+  cost_components: Array.isArray(row.cost_components)
+    ? row.cost_components.map((component) => ({
+        id: component.id || null,
+        name: component.name || "",
+        amount: Number(component.amount ?? 0),
+        sort_order: Number(component.sort_order ?? 0)
+      }))
+    : [],
   stock: row.stock ?? 0,
   image_url: row.image_url || "",
   published: row.published ?? false,
@@ -255,7 +276,7 @@ router.get("/", ...onlyAdmin, async (req, res) => {
     else if (sort === "name_asc") orderSql = "name ASC";
 
     const rowsQ = await pool.query(
-      `SELECT id, name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config, created_at, updated_at
+      `SELECT id, name, description, price, product_cost, fixed_costs, site_profit_percent, designer_commission_type, designer_commission_value, designer_base_price, designer_commission_amount, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config, created_at, updated_at
        FROM products
        ${whereSql}
        ORDER BY ${orderSql}
@@ -264,11 +285,13 @@ router.get("/", ...onlyAdmin, async (req, res) => {
       [...params, limit, offset]
     );
 
+    const items = await attachCostComponents(rowsQ.rows);
+
     res.json({
       page,
       limit,
       total,
-      items: rowsQ.rows.map(mapRow)
+      items: items.map(mapRow)
     });
   } catch (error) {
     console.error("ADMIN products list", error);
@@ -286,17 +309,107 @@ function parseBoolean(value, fallback = false) {
   return fallback;
 }
 
-function parsePrice(value) {
-  const num = Number.parseFloat(value);
-  if (!Number.isFinite(num) || num < 0) return null;
-  return Number(num.toFixed(2));
-}
-
 function parseStock(value) {
   if (value === null || typeof value === "undefined" || value === "") return null;
   const num = Number.parseInt(value, 10);
   if (!Number.isFinite(num) || num < 0) return null;
   return num;
+}
+
+function parsePrice(value) {
+  return parseMoney(value);
+}
+
+function parseCostComponents(raw, fallbackAmount = 0) {
+  let input = raw;
+  if (typeof raw === "string") {
+    const clean = raw.trim();
+    if (!clean) input = [];
+    else {
+      try {
+        input = JSON.parse(clean);
+      } catch {
+        return null;
+      }
+    }
+  }
+  if (!Array.isArray(input)) return null;
+  const components = [];
+  input.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object") return;
+    const name = String(entry.name || "").trim().replace(/\s+/g, " ");
+    const amount = parseMoney(entry.amount);
+    if (!name && (!amount || amount === 0)) return;
+    if (!name || amount === null) {
+      components.push(null);
+      return;
+    }
+    components.push({ name: name.slice(0, 80), amount, sort_order: index });
+  });
+  if (components.some((component) => component === null)) return null;
+  if (!components.length && Number(fallbackAmount) > 0) {
+    components.push({
+      name: "Costos fijos",
+      amount: parseMoney(fallbackAmount, 0) ?? 0,
+      sort_order: 0
+    });
+  }
+  return components;
+}
+
+function sumCostComponents(components = []) {
+  return Number(
+    components.reduce((sum, component) => sum + Number(component.amount || 0), 0).toFixed(2)
+  );
+}
+
+async function fetchCostComponents(productIds, client = pool) {
+  if (!Array.isArray(productIds) || !productIds.length) return new Map();
+  const { rows } = await client.query(
+    `SELECT id, product_id, name, amount, sort_order
+       FROM product_cost_components
+      WHERE product_id = ANY($1::uuid[])
+      ORDER BY product_id, sort_order ASC, created_at ASC`,
+    [productIds]
+  );
+  const map = new Map();
+  for (const row of rows) {
+    const list = map.get(String(row.product_id)) || [];
+    list.push({
+      id: row.id,
+      name: row.name,
+      amount: Number(row.amount ?? 0),
+      sort_order: row.sort_order ?? 0
+    });
+    map.set(String(row.product_id), list);
+  }
+  return map;
+}
+
+async function attachCostComponents(rows, client = pool) {
+  const componentMap = await fetchCostComponents(rows.map((row) => row.id), client);
+  return rows.map((row) => ({
+    ...row,
+    cost_components: componentMap.get(String(row.id)) || []
+  }));
+}
+
+async function replaceCostComponents(productId, components = [], client = pool) {
+  await client.query(`DELETE FROM product_cost_components WHERE product_id = $1`, [productId]);
+  if (!components.length) return;
+  const values = [];
+  const params = [];
+  let idx = 1;
+  for (const component of components) {
+    params.push(productId, component.name, component.amount, component.sort_order);
+    values.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3})`);
+    idx += 4;
+  }
+  await client.query(
+    `INSERT INTO product_cost_components (product_id, name, amount, sort_order)
+     VALUES ${values.join(", ")}`,
+    params
+  );
 }
 
 router.post(
@@ -311,31 +424,54 @@ router.post(
     });
   },
   async (req, res) => {
-    const { name, description, price, stock, published } = req.body;
+    const { name, description, stock, published } = req.body;
     const cleanName = typeof name === "string" ? name.trim() : "";
     if (!cleanName) return res.status(400).json({ error: "El nombre es obligatorio" });
     if (!req.file) return res.status(400).json({ error: "La imagen es obligatoria" });
-    const numericPrice = parsePrice(price);
-    if (numericPrice === null) {
-      return res.status(400).json({ error: "Precio inválido" });
-    }
     const numericStock = parseStock(stock);
     if (numericStock === null) {
       return res.status(400).json({ error: "Stock inválido" });
     }
+    const productCost = parseMoney(req.body.product_cost);
+    const components = parseCostComponents(req.body.cost_components, req.body.fixed_costs);
+    if (!components) {
+      return res.status(400).json({ error: "Costos fijos inválidos" });
+    }
+    const fixedCosts = sumCostComponents(components);
+    const siteProfitPercent = parsePercent(req.body.site_profit_percent);
+    const designerCommissionValue = parseMoney(req.body.designer_commission_value);
+    if ([productCost, fixedCosts, siteProfitPercent, designerCommissionValue].some((value) => value === null)) {
+      return res.status(400).json({ error: "Valores de precio o comisión inválidos" });
+    }
+    const pricing = calculateProductPricing({
+      product_cost: productCost,
+      fixed_costs: fixedCosts,
+      site_profit_percent: siteProfitPercent,
+      designer_commission_type: normalizeCommissionType(req.body.designer_commission_type),
+      designer_commission_value: designerCommissionValue
+    });
 
     const imageUrl = `/img/productos/${req.file.filename}`;
     const mockupConfig = parseMockupConfigFromBody(req.body, DEFAULT_MOCKUP);
 
+    const client = await pool.connect();
     try {
-      const insert = await pool.query(
-        `INSERT INTO products (name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         RETURNING id, name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config, created_at, updated_at`,
+      await client.query("BEGIN");
+      const insert = await client.query(
+        `INSERT INTO products (name, description, price, product_cost, fixed_costs, site_profit_percent, designer_commission_type, designer_commission_value, designer_base_price, designer_commission_amount, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         RETURNING id, name, description, price, product_cost, fixed_costs, site_profit_percent, designer_commission_type, designer_commission_value, designer_base_price, designer_commission_amount, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config, created_at, updated_at`,
         [
           cleanName,
           (description || "").toString().trim(),
-          numericPrice,
+          pricing.price,
+          pricing.product_cost,
+          pricing.fixed_costs,
+          pricing.site_profit_percent,
+          pricing.designer_commission_type,
+          pricing.designer_commission_value,
+          pricing.designer_base_price,
+          pricing.designer_commission_amount,
           numericStock,
           imageUrl,
           parseBoolean(published, false),
@@ -348,17 +484,23 @@ router.post(
           mockupConfig
         ]
       );
-      const created = mapRow(insert.rows[0]);
+      await replaceCostComponents(insert.rows[0].id, components, client);
+      await client.query("COMMIT");
+      const [createdWithComponents] = await attachCostComponents(insert.rows);
+      const created = mapRow(createdWithComponents);
       if (created.published) {
         await regenerateMockupsForProduct(created.id, { includeAllDesigns: true });
       }
       res.status(201).json(created);
     } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
       console.error("ADMIN products create", error);
       if (req.file) {
         await removeFileIfExists(path.join(productosDir, req.file.filename));
       }
       res.status(500).json({ error: "No se pudo crear el producto" });
+    } finally {
+      client.release();
     }
   }
 );
@@ -378,7 +520,7 @@ router.patch(
     const { id } = req.params;
     try {
       const prevQ = await pool.query(
-        `SELECT id, name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config
+        `SELECT id, name, description, price, product_cost, fixed_costs, site_profit_percent, designer_commission_type, designer_commission_value, designer_base_price, designer_commission_amount, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config
          FROM products
          WHERE id = $1
          LIMIT 1`,
@@ -425,6 +567,78 @@ router.patch(
           return res.status(400).json({ error: "Stock inválido" });
         }
         fields.push(`stock = ${push(numericStock)}`);
+      }
+      const pricingInput = {
+        product_cost: prev.product_cost,
+        fixed_costs: prev.fixed_costs,
+        site_profit_percent: prev.site_profit_percent,
+        designer_commission_type: prev.designer_commission_type,
+        designer_commission_value: prev.designer_commission_value
+      };
+      let pricingChanged = false;
+      let nextCostComponents = null;
+      if (typeof req.body.cost_components !== "undefined") {
+        nextCostComponents = parseCostComponents(req.body.cost_components, req.body.fixed_costs);
+        if (!nextCostComponents) {
+          if (req.file) await removeFileIfExists(path.join(productosDir, req.file.filename));
+          return res.status(400).json({ error: "Costos fijos inválidos" });
+        }
+        pricingInput.fixed_costs = sumCostComponents(nextCostComponents);
+        pricingChanged = true;
+      }
+      if (typeof req.body.product_cost !== "undefined") {
+        const parsed = parseMoney(req.body.product_cost);
+        if (parsed === null) {
+          if (req.file) await removeFileIfExists(path.join(productosDir, req.file.filename));
+          return res.status(400).json({ error: "Costo de producto inválido" });
+        }
+        pricingInput.product_cost = parsed;
+        pricingChanged = true;
+      }
+      if (typeof req.body.fixed_costs !== "undefined" && typeof req.body.cost_components === "undefined") {
+        const parsed = parseMoney(req.body.fixed_costs);
+        if (parsed === null) {
+          if (req.file) await removeFileIfExists(path.join(productosDir, req.file.filename));
+          return res.status(400).json({ error: "Costos fijos inválidos" });
+        }
+        pricingInput.fixed_costs = parsed;
+        pricingChanged = true;
+      }
+      if (typeof req.body.site_profit_percent !== "undefined") {
+        const parsed = parsePercent(req.body.site_profit_percent);
+        if (parsed === null) {
+          if (req.file) await removeFileIfExists(path.join(productosDir, req.file.filename));
+          return res.status(400).json({ error: "Ganancia del sitio inválida" });
+        }
+        pricingInput.site_profit_percent = parsed;
+        pricingChanged = true;
+      }
+      if (typeof req.body.designer_commission_type !== "undefined") {
+        pricingInput.designer_commission_type = normalizeCommissionType(
+          req.body.designer_commission_type,
+          prev.designer_commission_type || "percent"
+        );
+        pricingChanged = true;
+      }
+      if (typeof req.body.designer_commission_value !== "undefined") {
+        const parsed = parseMoney(req.body.designer_commission_value);
+        if (parsed === null) {
+          if (req.file) await removeFileIfExists(path.join(productosDir, req.file.filename));
+          return res.status(400).json({ error: "Comisión del diseñador inválida" });
+        }
+        pricingInput.designer_commission_value = parsed;
+        pricingChanged = true;
+      }
+      if (pricingChanged) {
+        const pricing = calculateProductPricing(pricingInput);
+        fields.push(`price = ${push(pricing.price)}`);
+        fields.push(`product_cost = ${push(pricing.product_cost)}`);
+        fields.push(`fixed_costs = ${push(pricing.fixed_costs)}`);
+        fields.push(`site_profit_percent = ${push(pricing.site_profit_percent)}`);
+        fields.push(`designer_commission_type = ${push(pricing.designer_commission_type)}`);
+        fields.push(`designer_commission_value = ${push(pricing.designer_commission_value)}`);
+        fields.push(`designer_base_price = ${push(pricing.designer_base_price)}`);
+        fields.push(`designer_commission_amount = ${push(pricing.designer_commission_amount)}`);
       }
       let nextPublishedValue = prev.published;
       let publishedChanged = false;
@@ -491,10 +705,14 @@ router.patch(
         `UPDATE products
            SET ${fields.join(", ")}
          WHERE id = $${idx + 1}
-        RETURNING id, name, description, price, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config, created_at, updated_at`,
+        RETURNING id, name, description, price, product_cost, fixed_costs, site_profit_percent, designer_commission_type, designer_commission_value, designer_base_price, designer_commission_amount, stock, image_url, published, curve_x_pct, curve_y_pct, curve_top_pct, curve_bottom_pct, curve_left_pct, curve_right_pct, mockup_config, created_at, updated_at`,
         values
       );
-      const updatedRow = mapRow(updateQ.rows[0]);
+      if (nextCostComponents) {
+        await replaceCostComponents(id, nextCostComponents);
+      }
+      const [updatedWithComponents] = await attachCostComponents(updateQ.rows);
+      const updatedRow = mapRow(updatedWithComponents);
 
       if (req.file && prev.image_url && prev.image_url.startsWith("/img/productos/")) {
         const oldName = prev.image_url.replace("/img/productos/", "");

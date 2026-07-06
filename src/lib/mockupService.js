@@ -392,7 +392,11 @@ export async function getDesignMockups(designIds, client = pool) {
             m.image_url,
             m.created_at,
             p.name AS product_name,
-            p.price
+            p.price,
+            p.designer_base_price,
+            p.designer_commission_type,
+            p.designer_commission_value,
+            p.designer_commission_amount
        FROM design_product_mockups m
        JOIN products p ON p.id = m.product_id
       WHERE m.design_id = ANY($1::uuid[])
@@ -407,7 +411,11 @@ export async function getDesignMockups(designIds, client = pool) {
       product_id: row.product_id,
       product_name: row.product_name,
       image_url: withCacheBuster(row.image_url, row.created_at),
-      price: row.price !== null ? Number(row.price) : null
+      price: row.price !== null ? Number(row.price) : null,
+      designer_base_price: row.designer_base_price !== null ? Number(row.designer_base_price) : 0,
+      designer_commission_type: row.designer_commission_type || "percent",
+      designer_commission_value: row.designer_commission_value !== null ? Number(row.designer_commission_value) : 0,
+      designer_commission_amount: row.designer_commission_amount !== null ? Number(row.designer_commission_amount) : 0
     });
     map.set(row.design_id, list);
   }

@@ -92,6 +92,13 @@ const curveTopLabel = $("#mockup-curve-top-value");
 const curveBottomLabel = $("#mockup-curve-bottom-value");
 const curveLeftLabel = $("#mockup-curve-left-value");
 const curveRightLabel = $("#mockup-curve-right-value");
+const pricingSiteProfitEl = $("#pricingSiteProfit");
+const pricingBaseEl = $("#pricingBase");
+const pricingCommissionEl = $("#pricingCommission");
+const pricingFinalEl = $("#pricingFinal");
+const costComponentsEl = $("#costComponents");
+const btnAddCost = $("#btnAddCost");
+const fixedCostsTotalEl = $("#fixedCostsTotal");
 
 const DEFAULT_MOCKUP = {
   width_pct: 0.45,
@@ -140,6 +147,33 @@ const formatDate = (iso) => {
     return "";
   }
 };
+
+const roundMoney = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.round((num + Number.EPSILON) * 100) / 100;
+};
+
+function calculatePricing(values = {}) {
+  const productCost = roundMoney(values.product_cost);
+  const fixedCosts = roundMoney(values.fixed_costs);
+  const siteProfitPercent = roundMoney(values.site_profit_percent);
+  const commissionType = values.designer_commission_type === "fixed" ? "fixed" : "percent";
+  const commissionValue = roundMoney(values.designer_commission_value);
+  const productionCost = roundMoney(productCost + fixedCosts);
+  const siteProfitAmount = roundMoney(productionCost * (siteProfitPercent / 100));
+  const designerBasePrice = roundMoney(productionCost + siteProfitAmount);
+  const designerCommissionAmount =
+    commissionType === "fixed"
+      ? commissionValue
+      : roundMoney(designerBasePrice * (commissionValue / 100));
+  return {
+    site_profit_amount: siteProfitAmount,
+    designer_base_price: designerBasePrice,
+    designer_commission_amount: designerCommissionAmount,
+    price: roundMoney(designerBasePrice + designerCommissionAmount)
+  };
+}
 
 function setEmptyState(show) {
   if (!controls.empty) return;
@@ -315,6 +349,104 @@ function setMockupConfig(cfg) {
   updateOverlayDisplay();
 }
 
+function normalizeCostComponents(components = []) {
+  const list = Array.isArray(components) ? components : [];
+  return list
+    .map((item) => ({
+      name: String(item?.name || "").trim().replace(/\s+/g, " "),
+      amount: roundMoney(item?.amount)
+    }))
+    .filter((item) => item.name || item.amount > 0);
+}
+
+function sumCostComponents(components = []) {
+  return roundMoney(components.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+}
+
+function readCostComponents() {
+  if (!costComponentsEl) return [];
+  return normalizeCostComponents(
+    Array.from(costComponentsEl.querySelectorAll(".cost-component-row")).map((row) => ({
+      name: row.querySelector("[data-cost-name]")?.value || "",
+      amount: row.querySelector("[data-cost-amount]")?.value || 0
+    }))
+  );
+}
+
+function renderCostComponents(components = []) {
+  if (!costComponentsEl) return;
+  const list = (Array.isArray(components) ? components : []).map((item) => ({
+    name: String(item?.name || ""),
+    amount: item?.amount ?? ""
+  }));
+  const rows = list.length ? list : [{ name: "", amount: 0 }];
+  costComponentsEl.innerHTML = rows
+    .map(
+      (item) => `
+        <div class="cost-component-row">
+          <label>Nombre
+            <input data-cost-name class="input" type="text" maxlength="80" placeholder="Ej: tinta" value="${escapeAttr(item.name || "")}"/>
+          </label>
+          <label>Valor (ARS)
+            <input data-cost-amount class="input" type="number" min="0" step="1" placeholder="0" value="${escapeAttr(item.amount || "")}"/>
+          </label>
+          <button type="button" class="btn btn-outline" data-cost-remove aria-label="Quitar costo">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+      `
+    )
+    .join("");
+  bindCostComponentRows();
+  updatePricingPreview();
+}
+
+function bindCostComponentRows() {
+  if (!costComponentsEl) return;
+  costComponentsEl.querySelectorAll("[data-cost-name], [data-cost-amount]").forEach((input) => {
+    input.addEventListener("input", () => {
+      validatePricingFields(true);
+      updatePricingPreview();
+    });
+  });
+  costComponentsEl.querySelectorAll("[data-cost-remove]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = button.closest(".cost-component-row");
+      row?.remove();
+      if (!costComponentsEl.querySelector(".cost-component-row")) {
+        renderCostComponents([{ name: "", amount: 0 }]);
+        return;
+      }
+      updatePricingPreview();
+    });
+  });
+}
+
+function addCostComponentRow(component = { name: "", amount: 0 }) {
+  const current = readCostComponents();
+  current.push(component);
+  renderCostComponents(current);
+}
+
+function readPricingForm() {
+  return {
+    product_cost: Number(form?.product_cost?.value || 0),
+    fixed_costs: sumCostComponents(readCostComponents()),
+    site_profit_percent: Number(form?.site_profit_percent?.value || 0),
+    designer_commission_type: form?.designer_commission_type?.value || "percent",
+    designer_commission_value: Number(form?.designer_commission_value?.value || 0)
+  };
+}
+
+function updatePricingPreview() {
+  const pricing = calculatePricing(readPricingForm());
+  if (fixedCostsTotalEl) fixedCostsTotalEl.textContent = formatCurrency(readPricingForm().fixed_costs);
+  if (pricingSiteProfitEl) pricingSiteProfitEl.textContent = formatCurrency(pricing.site_profit_amount);
+  if (pricingBaseEl) pricingBaseEl.textContent = formatCurrency(pricing.designer_base_price);
+  if (pricingCommissionEl) pricingCommissionEl.textContent = formatCurrency(pricing.designer_commission_amount);
+  if (pricingFinalEl) pricingFinalEl.textContent = formatCurrency(pricing.price);
+}
+
 function handleRangeChange() {
   if (!widthInput || !heightInput || !leftInput || !topInput || !curveTopInput || !curveBottomInput || !curveLeftInput || !curveRightInput) return;
   const width = clamp(Number(widthInput.value) / 100, 0.05, 0.9, currentMockup.width_pct);
@@ -399,8 +531,7 @@ function validateTextStep() {
     form.description?.reportValidity?.();
     return false;
   }
-  if (!validatePriceField(true)) {
-    form.price?.reportValidity?.();
+  if (!validatePricingFields(true)) {
     return false;
   }
   if (!validateStockField(true)) {
@@ -447,14 +578,48 @@ function validateDescriptionField(touched = false) {
   return valid;
 }
 
-function validatePriceField(touched = false) {
-  const input = form?.price;
+function validateMoneyField(input, label, touched = false) {
   if (!input) return true;
   const raw = (input.value || "").trim();
   const value = Number(raw);
   const valid = raw !== "" && Number.isFinite(value) && value >= 0;
-  input.setCustomValidity(valid ? "" : "Ingresá un precio válido (mayor o igual a 0).");
+  input.setCustomValidity(valid ? "" : `Ingresá un valor válido para ${label}.`);
   setFieldState(input, valid, touched || raw.length > 0);
+  return valid;
+}
+
+function validatePricingFields(touched = false) {
+  const fields = [
+    [form?.product_cost, "costo producto"],
+    [form?.site_profit_percent, "ganancia sitio"],
+    [form?.designer_commission_value, "comisión diseñador"]
+  ];
+  const baseValid = fields.every(([input, label]) => validateMoneyField(input, label, touched));
+  const costsValid = validateCostComponents(touched);
+  return baseValid && costsValid;
+}
+
+function validateCostComponents(touched = false) {
+  if (!costComponentsEl) return true;
+  let valid = true;
+  costComponentsEl.querySelectorAll(".cost-component-row").forEach((row) => {
+    const nameInput = row.querySelector("[data-cost-name]");
+    const amountInput = row.querySelector("[data-cost-amount]");
+    const name = (nameInput?.value || "").trim();
+    const rawAmount = (amountInput?.value || "").trim();
+    const amount = Number(rawAmount);
+    const empty = !name && !rawAmount;
+    const rowValid = empty || (Boolean(name) && rawAmount !== "" && Number.isFinite(amount) && amount >= 0);
+    if (nameInput) {
+      nameInput.setCustomValidity(rowValid ? "" : "Ingresá el nombre del costo.");
+      setFieldState(nameInput, rowValid, touched || Boolean(name));
+    }
+    if (amountInput) {
+      amountInput.setCustomValidity(rowValid ? "" : "Ingresá un monto válido.");
+      setFieldState(amountInput, rowValid, touched || rawAmount.length > 0);
+    }
+    valid = valid && rowValid;
+  });
   return valid;
 }
 
@@ -490,7 +655,7 @@ function validateImageField(touched = false) {
 }
 
 function resetValidationUI() {
-  [form?.name, form?.description, form?.price, form?.stock, fileInput].forEach((input) => {
+  [form?.name, form?.description, form?.product_cost, form?.site_profit_percent, form?.designer_commission_value, form?.stock, fileInput].forEach((input) => {
     if (!input) return;
     input.classList.remove("is-valid", "is-invalid");
     input.setCustomValidity("");
@@ -548,12 +713,21 @@ async function loadProducts() {
       const descShort = desc.length > 80 ? `${desc.slice(0, 77)}…` : desc || "—";
       const descEsc = escapeHtml(descShort);
       const configAttr = encodeURIComponent(JSON.stringify(p.mockup_config || {}));
+      const costsAttr = encodeURIComponent(JSON.stringify(p.cost_components || []));
       return `
         <tr
           data-id="${escapeAttr(p.id)}"
           data-name="${escapeAttr(p.name || "")}" 
           data-description="${escapeAttr(p.description || "")}" 
           data-price="${escapeAttr(p.price ?? 0)}" 
+          data-product-cost="${escapeAttr(p.product_cost ?? 0)}"
+          data-fixed-costs="${escapeAttr(p.fixed_costs ?? 0)}"
+          data-cost-components="${costsAttr}"
+          data-site-profit-percent="${escapeAttr(p.site_profit_percent ?? 0)}"
+          data-designer-commission-type="${escapeAttr(p.designer_commission_type || "percent")}"
+          data-designer-commission-value="${escapeAttr(p.designer_commission_value ?? 0)}"
+          data-designer-base-price="${escapeAttr(p.designer_base_price ?? 0)}"
+          data-designer-commission-amount="${escapeAttr(p.designer_commission_amount ?? 0)}"
           data-stock="${escapeAttr(p.stock ?? 0)}" 
           data-image="${escapeAttr(p.image_url || "")}" 
           data-config="${configAttr}" 
@@ -568,7 +742,10 @@ async function loadProducts() {
               </div>
             </div>
           </td>
-          <td class="price">${formatCurrency(p.price)}</td>
+          <td class="price">
+            <div>${formatCurrency(p.price)}</div>
+            <div class="muted-sm">Base producto ${formatCurrency(p.designer_base_price || 0)} · Comisión ${formatCurrency(p.designer_commission_amount || 0)}</div>
+          </td>
           <td>${p.stock ?? 0}</td>
           <td>
             <span class="status-pill ${p.published ? "published" : "unpublished"}">
@@ -603,11 +780,25 @@ function handleRowAction(ev) {
       config = JSON.parse(decodeURIComponent(tr.dataset.config));
     } catch {}
   }
+  let costComponents = [];
+  if (tr.dataset.costComponents) {
+    try {
+      costComponents = JSON.parse(decodeURIComponent(tr.dataset.costComponents));
+    } catch {}
+  }
   const product = {
     id: tr.dataset.id,
     name: tr.dataset.name || "",
     description: tr.dataset.description || "",
     price: tr.dataset.price || "0",
+    product_cost: tr.dataset.productCost || "0",
+    fixed_costs: tr.dataset.fixedCosts || "0",
+    cost_components: Array.isArray(costComponents) ? costComponents : [],
+    site_profit_percent: tr.dataset.siteProfitPercent || "0",
+    designer_commission_type: tr.dataset.designerCommissionType || "percent",
+    designer_commission_value: tr.dataset.designerCommissionValue || "0",
+    designer_base_price: tr.dataset.designerBasePrice || "0",
+    designer_commission_amount: tr.dataset.designerCommissionAmount || "0",
     stock: tr.dataset.stock || "0",
     image_url: tr.dataset.image || "",
     published: tr.dataset.published === "1",
@@ -649,6 +840,12 @@ function resetForm() {
     form.dataset.originalImage = "";
   }
   setMockupConfig(DEFAULT_MOCKUP);
+  if (form?.product_cost) form.product_cost.value = "0";
+  renderCostComponents([{ name: "", amount: 0 }]);
+  if (form?.site_profit_percent) form.site_profit_percent.value = "0";
+  if (form?.designer_commission_type) form.designer_commission_type.value = "percent";
+  if (form?.designer_commission_value) form.designer_commission_value.value = "0";
+  updatePricingPreview();
   configureModalMode(true);
 }
 
@@ -663,7 +860,15 @@ function openModal(product) {
     form.id.value = product.id;
     form.name.value = product.name || "";
     form.description.value = product.description || "";
-    form.price.value = product.price ?? "";
+    form.product_cost.value = product.product_cost ?? "0";
+    renderCostComponents(
+      product.cost_components?.length
+        ? product.cost_components
+        : [{ name: "Costos fijos", amount: product.fixed_costs || 0 }]
+    );
+    form.site_profit_percent.value = product.site_profit_percent ?? "0";
+    form.designer_commission_type.value = product.designer_commission_type || "percent";
+    form.designer_commission_value.value = product.designer_commission_value ?? "0";
     form.stock.value = product.stock ?? "";
     form.published.checked = !!product.published;
     setPreviewFromUrl(product.image_url);
@@ -673,6 +878,7 @@ function openModal(product) {
     modalTitle.textContent = "Nuevo producto";
     form.published.checked = true;
   }
+  updatePricingPreview();
   if (typeof modal?.showModal === "function") {
     modal.showModal();
   }
@@ -731,7 +937,13 @@ async function submitForm(ev) {
   const formData = new FormData();
   formData.set("name", form.name.value.trim());
   formData.set("description", form.description.value.trim());
-  formData.set("price", form.price.value);
+  const costComponents = readCostComponents();
+  formData.set("product_cost", form.product_cost.value);
+  formData.set("fixed_costs", String(sumCostComponents(costComponents)));
+  formData.set("cost_components", JSON.stringify(costComponents));
+  formData.set("site_profit_percent", form.site_profit_percent.value);
+  formData.set("designer_commission_type", form.designer_commission_type.value);
+  formData.set("designer_commission_value", form.designer_commission_value.value);
   formData.set("stock", form.stock.value);
   formData.set("published", form.published.checked ? "1" : "0");
 
@@ -853,9 +1065,14 @@ async function init() {
   form?.description?.addEventListener("input", () => {
     validateDescriptionField(true);
   });
-  form?.price?.addEventListener("input", () => {
-    validatePriceField(true);
+  [form?.product_cost, form?.site_profit_percent, form?.designer_commission_value].forEach((input) => {
+    input?.addEventListener("input", () => {
+      validatePricingFields(true);
+      updatePricingPreview();
+    });
   });
+  form?.designer_commission_type?.addEventListener("change", updatePricingPreview);
+  btnAddCost?.addEventListener("click", () => addCostComponentRow());
   form?.stock?.addEventListener("input", () => {
     validateStockField(true);
   });

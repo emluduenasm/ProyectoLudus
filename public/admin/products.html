@@ -146,6 +146,15 @@
     .wizard-actions[hidden]{display:none !important}
     .wizard-actions button[hidden]{display:none !important}
     .wizard-row-2{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+    .wizard-row-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem}
+    .pricing-preview{border:1px solid #e2e8f0;border-radius:10px;padding:.85rem;background:#f8fafc;display:grid;gap:.35rem}
+    .pricing-preview-row{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem}
+    .pricing-preview-row strong{color:#0f172a}
+    .pricing-preview-total{border-top:1px solid #e2e8f0;margin-top:.25rem;padding-top:.5rem;font-size:1rem}
+    .cost-components{border:1px solid #e2e8f0;border-radius:10px;padding:.85rem;display:grid;gap:.6rem}
+    .cost-components-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+    .cost-component-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(110px,.8fr) auto;gap:.5rem;align-items:end}
+    .cost-component-row button{height:42px}
     .wizard-actions{display:flex;gap:.75rem;justify-content:flex-end}
     .modal-footer{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
     .form-actions{display:flex;gap:.75rem;justify-content:flex-end}
@@ -162,6 +171,8 @@
       .image-field{grid-template-columns:1fr}
       .mockup-controls{grid-template-columns:1fr}
       .wizard-row-2{grid-template-columns:1fr}
+      .wizard-row-3{grid-template-columns:1fr}
+      .cost-component-row{grid-template-columns:1fr}
       .modal-footer{flex-direction:column-reverse;align-items:stretch}
       .wizard-actions,.form-actions{justify-content:stretch}
       .wizard-actions .btn,.form-actions .btn{width:100%}
@@ -239,7 +250,7 @@
         <thead>
           <tr>
             <th>Producto</th>
-            <th>Precio</th>
+            <th>Precio final</th>
             <th>Stock</th>
             <th>Publicado</th>
             <th>Actualizado</th>
@@ -283,9 +294,39 @@
             <textarea name="description" placeholder="Detalles del producto"></textarea>
           </label>
           <div class="wizard-row-2">
-            <label>Precio (ARS)
-              <input name="price" type="number" min="0" step="0.01" placeholder="0.00" required/>
+            <label>Costo producto (ARS)
+              <input name="product_cost" type="number" min="0" step="1" placeholder="0" required/>
             </label>
+          </div>
+          <div class="cost-components">
+            <div class="cost-components-head">
+              <strong>Costos fijos</strong>
+              <button type="button" class="btn btn-outline" id="btnAddCost"><i class="fa-solid fa-plus"></i> Agregar</button>
+            </div>
+            <div id="costComponents"></div>
+            <div class="muted-sm">Total costos fijos: <strong id="fixedCostsTotal">$ 0,00</strong></div>
+          </div>
+          <div class="wizard-row-3">
+            <label>Ganancia sitio (%)
+              <input name="site_profit_percent" type="number" min="0" step="0.01" placeholder="0" required/>
+            </label>
+            <label>Comisión diseñador
+              <select name="designer_commission_type" class="input">
+                <option value="percent">Porcentaje</option>
+                <option value="fixed">Monto fijo</option>
+              </select>
+            </label>
+            <label>Valor comisión
+              <input name="designer_commission_value" type="number" min="0" step="1" placeholder="0" required/>
+            </label>
+          </div>
+          <div class="pricing-preview" aria-live="polite">
+            <div class="pricing-preview-row"><span>Ganancia sitio</span><strong id="pricingSiteProfit">$ 0,00</strong></div>
+            <div class="pricing-preview-row"><span>Base producto</span><strong id="pricingBase">$ 0,00</strong></div>
+            <div class="pricing-preview-row"><span>Comisión diseñador</span><strong id="pricingCommission">$ 0,00</strong></div>
+            <div class="pricing-preview-row pricing-preview-total"><span>Precio final</span><strong id="pricingFinal">$ 0,00</strong></div>
+          </div>
+          <div class="wizard-row-2">
             <label>Stock disponible
               <input name="stock" type="number" min="0" step="1" required/>
             </label>

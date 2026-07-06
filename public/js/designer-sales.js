@@ -36,8 +36,43 @@
     fFrom: $("#fFrom"),
     fTo: $("#fTo"),
     btnFiltersClear: $("#btnFiltersClear"),
-    totalAmount: $("#totalAmount")
+    totalAmount: $("#totalAmount"),
+    totalCommission: $("#totalCommission")
   };
+
+  function hasDesignerTools(profile = {}) {
+    const user = profile.user || {};
+    const designer = profile.designer || {};
+    return (
+      user.role === "designer" ||
+      user.use_preference === "upload" ||
+      Number(designer.stats?.designs || 0) > 0
+    );
+  }
+
+  function hasPayoutData(profile = {}) {
+    const designer = profile.designer || {};
+    return Boolean(String(designer.payout_alias || "").trim() || String(designer.payout_cbu || "").trim());
+  }
+
+  function renderPayoutBanner(profile) {
+    const main = document.querySelector("main");
+    if (!main || !hasDesignerTools(profile) || hasPayoutData(profile)) return;
+    if (main.querySelector("#payoutAlert")) return;
+    const nav = main.querySelector(".admin-subnav");
+    const html = `
+      <section id="payoutAlert" class="card" style="padding:1rem;margin:1rem 0;border-left:4px solid #f59e0b">
+        <div style="display:flex;gap:1rem;align-items:center;justify-content:space-between;flex-wrap:wrap">
+          <div>
+            <strong>Datos de cobro pendientes</strong>
+            <p class="muted-sm" style="margin:.25rem 0 0">Para poder cobrar comisiones por tus dise&ntilde;os, carg&aacute; un alias o CBU/CVU.</p>
+          </div>
+          <a class="btn btn-primary" href="/user-profile.html#payoutSection"><i class="fa-solid fa-wallet"></i> Completar datos de cobro</a>
+        </div>
+      </section>`;
+    if (nav) nav.insertAdjacentHTML("afterend", html);
+    else main.insertAdjacentHTML("afterbegin", html);
+  }
 
   async function guardDesigner() {
     if (!token) {
@@ -46,7 +81,7 @@
       return false;
     }
     try {
-      const res = await fetch(api("/auth/me"), {
+      const res = await fetch(api("/designers/me"), {
         headers: { ...auth(), Accept: "application/json" },
         cache: "no-store"
       });
@@ -55,8 +90,8 @@
         location.href = `/login.html?next=${next}`;
         return false;
       }
-      const me = await res.json();
-      if (me.role !== "designer") {
+      const profile = await res.json();
+      if (!hasDesignerTools(profile)) {
         document.querySelector("main").innerHTML = `
           <section class="card" style="padding:1.5rem">
             <h2>No sos diseñador</h2>
@@ -64,7 +99,7 @@
           </section>`;
         return false;
       }
-      return true;
+      return profile;
     } catch {
       const next = encodeURIComponent(location.pathname + location.search);
       location.href = `/login.html?next=${next}`;
@@ -75,7 +110,7 @@
   async function loadSales() {
     if (!controls.rows) return;
     const requestToken = ++state.requestToken;
-    controls.rows.innerHTML = `<tr><td colspan="7">Cargando…</td></tr>`;
+    controls.rows.innerHTML = `<tr><td colspan="8">Cargando…</td></tr>`;
     try {
       const params = new URLSearchParams({
         page: state.page,
@@ -116,10 +151,17 @@
       if (controls.totalAmount) {
         controls.totalAmount.textContent = currency.format(totalAmountValue);
       }
+      const totalCommissionValue =
+        typeof data.total_commission === "number" && !Number.isNaN(data.total_commission)
+          ? data.total_commission
+          : sumCommissionTotals(data.items || []);
+      if (controls.totalCommission) {
+        controls.totalCommission.textContent = currency.format(totalCommissionValue);
+      }
       syncFilterInputs();
 
       if (!data.items?.length) {
-        controls.rows.innerHTML = `<tr><td colspan="7">Aún no registraste ventas.</td></tr>`;
+        controls.rows.innerHTML = `<tr><td colspan="8">Aún no registraste ventas.</td></tr>`;
         return;
       }
 
@@ -127,6 +169,13 @@
         .map((item) => {
           const total = currency.format(item.line_total || 0);
           const unit = currency.format(item.unit_price || 0);
+          const base = currency.format(item.designer_base_price || 0);
+          const commissionUnit = currency.format(item.designer_commission_amount || 0);
+          const commissionTotal = currency.format(item.commission_total || 0);
+          const commissionLabel =
+            item.designer_commission_type === "fixed"
+              ? `${currency.format(item.designer_commission_value || 0)} fijo`
+              : `${Number(item.designer_commission_value || 0)}%`;
           const statusInfo = STATUS_LABELS[item.status] || STATUS_LABELS.pending;
           return `
             <tr>
@@ -137,6 +186,11 @@
                 <div class="muted-sm">${escapeHtml(item.design_title)}</div>
               </td>
               <td>${item.quantity} <span class="muted-sm">(${unit} c/u)</span></td>
+              <td>
+                <div>Base producto: ${base}</div>
+                <div class="muted-sm">Comisión ${commissionLabel}: ${commissionUnit} c/u</div>
+                <div class="muted-sm">Total comisión: ${commissionTotal}</div>
+              </td>
               <td>
                 <span class="status-pill ${statusInfo.className}">
                   ${statusInfo.label}
@@ -153,8 +207,9 @@
         .join("");
     } catch (err) {
       if (requestToken !== state.requestToken) return;
-      controls.rows.innerHTML = `<tr><td colspan="7">${err.message}</td></tr>`;
+      controls.rows.innerHTML = `<tr><td colspan="8">${err.message}</td></tr>`;
       if (controls.totalAmount) controls.totalAmount.textContent = currency.format(0);
+      if (controls.totalCommission) controls.totalCommission.textContent = currency.format(0);
     }
   }
 
@@ -190,6 +245,10 @@
 
   function sumLineTotals(items) {
     return items.reduce((acc, item) => acc + Number(item?.line_total || 0), 0);
+  }
+
+  function sumCommissionTotals(items) {
+    return items.reduce((acc, item) => acc + Number(item?.commission_total || 0), 0);
   }
 
   function syncFilterInputs() {
@@ -258,7 +317,9 @@
   }
 
   async function init() {
-    if (!(await guardDesigner())) return;
+    const profile = await guardDesigner();
+    if (!profile) return;
+    renderPayoutBanner(profile);
     bindEvents();
     loadSales();
   }
